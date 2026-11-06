@@ -44,16 +44,26 @@ root.RasmAdvancedUI={mount(ctx){
  }
  function dimStyleForm(name){
   const base=D.currentStyle(doc()),stored=doc().resources?.dimStyles?.[name];const style={...base,...(stored?.style||stored||{})};
-  dialog('DIMSTYLE — '+name,[{name:'name',label:'Style name',value:name,required:true},...['textHeight','dimensionScale','arrowSize','extensionOffset','extensionExtend','textGap','precision'].map(k=>({name:k,label:k,type:'number',value:style[k]??(k==='precision'?2:1)})),{name:'arrowStyle',label:'Arrow style',options:['closed','open','tick'],value:style.arrowStyle||'closed'},{name:'prefix',label:'Prefix',value:style.prefix||''},{name:'suffix',label:'Suffix',value:style.suffix||''},{name:'dimensionColor',label:'Dimension color (blank inherits)',value:style.dimensionColor||''},{name:'textColor',label:'Text color (blank inherits)',value:style.textColor||''},{name:'applySelected',label:'Apply to selected dimensions',type:'checkbox',value:ids().length>0}],v=>{
+  const window=dialog('DIMSTYLE — '+name,[{name:'name',label:'Style name',value:name,required:true},...['textHeight','dimensionScale','arrowSize','extensionOffset','extensionExtend','textGap','precision','lineWidth'].map(k=>({name:k,label:k,type:'number',value:style[k]??(k==='precision'?2:1)})),{name:'arrowStyle',label:'Arrow style',options:['closed','open','tick'],value:style.arrowStyle||'closed'},{name:'prefix',label:'Prefix',value:style.prefix||''},{name:'suffix',label:'Suffix',value:style.suffix||''},{name:'color',label:'Object color (blank inherits layer)',value:style.color||''},{name:'dimensionColor',label:'Dimension color (blank inherits)',value:style.dimensionColor||''},{name:'textColor',label:'Text color (blank inherits)',value:style.textColor||''},{name:'applySelected',label:'Apply to selected dimensions',type:'checkbox',value:ids().length>0}],v=>{
    if(v.applySelected&&ids().some(id=>doc().entities.find(e=>e.id===id)?.kind!=='dimension'))throw Error('Select only dimensions before applying a dimension style.');
-   const opts={};for(const k of ['textHeight','dimensionScale','arrowSize','extensionOffset','extensionExtend','textGap','precision'])opts[k]=number(v[k],k);
-   for(const k of ['arrowStyle','prefix','suffix'])opts[k]=v[k];opts.dimensionColor=v.dimensionColor||null;opts.textColor=v.textColor||null;
+   const opts={};for(const k of ['textHeight','dimensionScale','arrowSize','extensionOffset','extensionExtend','textGap','precision','lineWidth'])opts[k]=number(v[k],k);
+   for(const k of ['arrowStyle','prefix','suffix'])opts[k]=v[k];opts.color=v.color||null;opts.dimensionColor=v.dimensionColor||null;opts.textColor=v.textColor||null;
    const original=doc(),working=C.Document.parse(original.serialize());
-   D.style(working,working.resources?.dimStyles?.[v.name]?'UPDATE':'SAVE',v.name,opts);D.style(working,'SETCURRENT',v.name);
+   D.style(working,D.style(working,'LIST').some(s=>s.name.toLowerCase()===v.name.toLowerCase())?'UPDATE':'SAVE',v.name,opts);D.style(working,'SETCURRENT',v.name);
    if(v.applySelected)D.style(working,'APPLY',v.name,{ids:ids()});
-   original.checkpoint();original.entities=working.entities;original.resources=working.resources;
+   if(working.serialize()!==original.serialize()){original.checkpoint();original.entities=working.entities;original.resources=working.resources;}
    done(ids(),'Dimension style saved and set current.');
   });
+  const load=document.createElement('div');load.className='dimstyle-load';load.style.cssText='grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center';
+  const sources=document.createElement('select');sources.id='advanced-style-source';sources.setAttribute('aria-label','Existing dimension style');for(const entry of D.style(doc(),'LIST')){const o=document.createElement('option');o.value=entry.name;o.textContent=entry.name;sources.append(o);}sources.value=name;
+  const loadStyle=document.createElement('button');loadStyle.id='advanced-style-load';loadStyle.type='button';loadStyle.textContent='Load existing style';loadStyle.disabled=!sources.options.length;
+  const presets=document.createElement('select');presets.id='advanced-style-preset';presets.setAttribute('aria-label','Visual dimension preset');for(const entry of D.style(doc(),'PRESETS')){const o=document.createElement('option');o.value=entry.name;o.textContent=entry.name;presets.append(o);}
+  const loadPreset=document.createElement('button');loadPreset.id='advanced-style-load-preset';loadPreset.type='button';loadPreset.textContent='Load visual preset';
+  const fill=(values,newName)=>{for(const key of D.fields){const input=window.querySelector('#advanced-'+key);if(input)input.value=values[key]??'';}if(newName)window.querySelector('#advanced-name').value=newName;};
+  loadStyle.onclick=()=>run(()=>fill(D.style(doc(),'GET',sources.value),sources.value));loadPreset.onclick=()=>run(()=>fill(D.style(doc(),'PRESETS').find(x=>x.name===presets.value),presets.value));
+  load.append(sources,loadStyle,presets,loadPreset);window.querySelector('form').prepend(load);
+  const note=document.createElement('p');note.style.gridColumn='1/-1';note.textContent='All rendered style fields are editable. To copy a loaded style, enter a new name before Apply. Presets change visual sizes only; units, tolerances and alternate measurements are not implemented.';load.after(note);
+
  }
  function start(name,rest){
   state=null;ctx.enter();name=name==='EXPLOAD'?'EXPLODE':name;
@@ -107,27 +117,42 @@ root.RasmAdvancedUI={mount(ctx){
   if(name==='ATTSYNC'){const sync=name=>done(B.syncAttributes(doc(),name),'Block attributes synchronized.');if(rest)sync(rest);else askName('ATTSYNC — block name',sync);return;}
   if(name==='DIMSTYLE'){
    const [action,...arg]=rest.split(/\s+/),styleName=arg.join(' ');
+   if(['COPY','PRESET'].includes(action.toUpperCase())){const [source,newName]=styleName.split('|').map(x=>x.trim());if(!source||!newName)throw Error('Use DIMSTYLE '+action.toUpperCase()+' Source|New name');D.style(doc(),action,source,{newName});ctx.changed(ids(),'Dimension style created.');return;}
+   if(action.toUpperCase()==='PRESETS'){ctx.log(JSON.stringify(D.style(doc(),'PRESETS')));return;}
    if(action.toUpperCase()==='RENAME'){const [oldName,newName]=styleName.split('|').map(x=>x.trim());if(!newName)throw Error('Use DIMSTYLE RENAME Old name|New name');D.style(doc(),'RENAME',oldName,{newName});ctx.changed(ids(),'Dimension style renamed.');return;}
    if(['SETCURRENT','DELETE','RENAME','APPLY','LIST'].includes(action.toUpperCase())){const result=D.style(doc(),action.toUpperCase(),styleName,{ids:ids()});ctx.changed(ids(),typeof result==='object'?JSON.stringify(result):'Dimension style updated.');return;}
    dimStyleForm(rest||doc().resources?.currentDimStyle||'Standard');return;
   }
-  if(name==='DIMCONTINUE'||name==='DIMBASELINE'){acquire(name,()=>{const ref=selectedOne(e=>e.kind==='dimension');stage(name,name+': next feature point, then dimension placement.',2,p=>done(D.continueDimension(doc(),ref.id,p[0],p[1],{baseline:name==='DIMBASELINE'})));});return;}
+  if(name==='DIMCONTINUE'||name==='DIMBASELINE'){
+   const tokens=rest.trim().split(/\s+/).filter(Boolean),automatic=tokens[0]?.toUpperCase()==='AUTO';
+   if(tokens.length&&(!automatic||tokens.length>2||name==='DIMCONTINUE'&&tokens.length>1))throw Error(name+': use no options for two-point placement, or AUTO'+(name==='DIMBASELINE'?' [spacing]':''));
+   const baselineSpacing=tokens[1]?number(tokens[1],'baseline spacing'):undefined;if(baselineSpacing!=null&&baselineSpacing<0)throw Error('Baseline spacing must be nonnegative.');
+   acquire(name,()=>{const ref=selectedOne(e=>e.kind==='dimension');
+    if(!automatic){stage(name,name+': next feature point, then dimension placement.',2,p=>done(D.continueDimension(doc(),ref.id,p[0],p[1],{baseline:name==='DIMBASELINE'})));return;}
+    let previous=ref.id;const edits=[];let last=doc().serialize();
+    const next=()=>stage(name,name+' AUTO: pick next feature; U undo; Enter/Esc finish.',1,p=>{
+     const id=D.continueDimension(doc(),previous,p[0],null,{baseline:name==='DIMBASELINE',baselineSpacing})[0];edits.push({before:previous,id});previous=id;last=doc().serialize();ctx.changed([id],'Dimension added. Continue picking features, U undo, Enter/Esc finish.');next();
+    },{basePoint:clone(doc().entities.find(e=>e.id===previous).points[name==='DIMBASELINE'?0:1]),finish:()=>{state=null;refresh();ctx.log('Automatic dimension chain finished.');},localUndo:()=>{if(!edits.length){ctx.log('No dimensions in this chain to undo.');return;}if(doc().serialize()!==last)throw Error('Another document change intervened. Finish this chain before using history Undo.');if(!doc().undo())throw Error('No more dimension history is available.');previous=edits.pop().before;last=doc().serialize();ctx.changed([previous],'Last chained dimension undone.');next();}});
+    next();
+   });return;
+  }
   if(name==='DIMORDINATE'){dialog('DIMORDINATE',[{name:'axis',label:'Measured coordinate',options:['X','Y']}],v=>stage(name,'DIMORDINATE: datum origin, feature point, label location.',3,p=>done(D.ordinate(doc(),p[0],p[1],p[2],v.axis))));return;}
   if(name==='DIMEDIT'){acquire(name,()=>dialog('DIMEDIT',[{name:'action',label:'Operation',options:['TEXT','POSITION','RESET']},{name:'text',label:'Text override (<> = measurement)',value:'<>'}],v=>{if(v.action==='POSITION')stage(name,'DIMEDIT: pick new dimension placement.',1,p=>done(D.edit(doc(),ids(),'POSITION',p[0])));else done(D.edit(doc(),ids(),v.action,v.text));}));return;}
   if(name==='QLEADER'||name==='MLEADER'){stage(name,name+': arrow tip, bend point, then text location.',3,p=>{state={name,stage:'leadertext',points:p,prompt:name+': enter the leader text.'};refresh();});return;}
   if(name==='MLEADEREDIT'){acquire(name,()=>{const e=selectedOne(e=>e.subtype==='leader');dialog('MLEADEREDIT',[{name:'action',label:'Operation',options:['TEXT','POSITION','ADD','REMOVE']},{name:'text',label:'Text',value:e.data.text||''},{name:'index',label:'Arm index (zero based)',type:'number',value:0}],v=>{if(v.action==='TEXT')done(D.editLeader(doc(),e.id,'TEXT',v.text));else if(v.action==='REMOVE')done(D.editLeader(doc(),e.id,'REMOVE',number(v.index,'index')));else stage(name,v.action==='ADD'?'Pick new leader arrow tip, then bend point.':'Pick new text location.',v.action==='ADD'?2:1,p=>done(D.editLeader(doc(),e.id,v.action,v.action==='ADD'?p:p[0])));});});return;}
  }
  function updateBlockBanner(){let banner=document.getElementById('block-edit-banner');if(!banner){banner=document.createElement('div');banner.id='block-edit-banner';banner.className='block-edit-banner';document.querySelector('.work-area').prepend(banner);}banner.replaceChildren();banner.hidden=!blockSession;if(blockSession){const text=document.createElement('span');text.textContent='BLOCK EDIT — changes are staged until saved. ';const save=document.createElement('button');save.textContent='Save block';save.onclick=()=>run(()=>start('BCLOSE','SAVE'));const cancel=document.createElement('button');cancel.textContent='Discard';cancel.onclick=()=>run(()=>start('BCLOSE','CANCEL'));banner.append(text,save,cancel);}}
- function accept(p){if(!state||state.stage==='select'||state.stage==='leadertext')return false;state.points.push({...p});if(state.points.length>=state.count){const action=state.action,values=state.points.map(clone);action(values);}else refresh();return true;}
+ function accept(p){if(!state||state.stage==='select'||state.stage==='leadertext')return false;const active=state,previous=state.points.map(clone);state.points.push({...p});try{if(state.points.length>=state.count){const action=state.action,values=state.points.map(clone);action(values);}else refresh();return true;}catch(error){if(state===active)state.points=previous;refresh();throw error;}}
  function finish(){if(!state)return false;if(state.stage==='select'){if(!ids().length)throw Error('Select at least one editable object.');const after=state.after;state.stage='ready';after();return true;}if(state.finish){const action=state.finish,p=state.points.map(clone);action(p);return true;}ctx.log('Complete the requested points, or Esc to cancel.',true);return true;}
  function execute(raw){const split=N.commandSplit(raw);if(state?.stage==='leadertext'){done(D.leader(doc(),[[state.points[0],state.points[1],state.points[2]]],state.points[2],raw,D.currentStyle(doc())),'Leader created.');return true;}
   if(names.includes(split.name)){start(split.name,split.rest);return true;}
   if(!state)return false;
+  if(state.localUndo&&['U','UNDO'].includes(split.name)&&!split.rest){state.localUndo();return true;}
   if(state.stage==='select'){if(['ALL','A'].includes(split.name)){ctx.selectAll();return true;}throw Error('Select objects, then Enter.');}
   const point=ctx.parsePoint?ctx.parsePoint(raw,state.points.at(-1)||null):N.parsePoint(raw,state.points.at(-1)||null);if(point){if(ctx.acceptPoint)ctx.acceptPoint(point);else accept(point);return true;}throw Error('This command expects a point as x,y, or Esc to cancel.');
  }
  function addToolbar(){const group=document.createElement('details');group.className='tool-group';const summary=document.createElement('summary');summary.textContent='Advanced 2D';group.append(summary);const grid=document.createElement('div');grid.className='tool-grid';for(const name of ['STRETCH','BREAK','LENGTHEN','ALIGN','PEDIT','SPLINE','SPLINEDIT','OVERKILL','EXPLODE','HATCH','HATCHEDIT','BOUNDARY','REGION','BLOCK','INSERT','BEDIT','REFEDIT','WBLOCK','ATTDEF','ATTEDIT','DIMSTYLE','DIMCONTINUE','DIMBASELINE','DIMORDINATE','DIMEDIT','QLEADER','MLEADER','MLEADEREDIT','OSNAPSET']){const b=document.createElement('button');b.type='button';b.dataset.advanced=name;b.textContent=name;b.title=name;b.onclick=()=>run(()=>start(name,''));grid.append(b);}group.append(grid);document.querySelector('.tools').append(group);}
  addToolbar();
- return{get textInput(){return state?.stage==='leadertext';},execute,acceptPoint:accept,finish,cancel(){state=null;refresh();},get active(){return !!state;},get acquiring(){return state?.stage==='select';},get prompt(){return state?.prompt||'';},get name(){return state?.name||'';},get basePoint(){return state?.points.at(-1)||null;},get snapModes(){return [...snapModes];},get blockEditing(){return !!blockSession;},guardReplace(){if(blockSession){ctx.log('Save or discard the block edit with BCLOSE before opening another drawing.',true);return false;}return true;},preview(){return state?.points.length>1?[{kind:'polyline',points:state.points,closed:false}]:[];},dialog};
+ return{get textInput(){return state?.stage==='leadertext';},execute,acceptPoint:accept,finish,cancel(){state=null;refresh();},get active(){return !!state;},get acquiring(){return state?.stage==='select';},get prompt(){return state?.prompt||'';},get name(){return state?.name||'';},get basePoint(){return state?.basePoint||state?.points.at(-1)||null;},get snapModes(){return [...snapModes];},get blockEditing(){return !!blockSession;},guardReplace(){if(blockSession){ctx.log('Save or discard the block edit with BCLOSE before opening another drawing.',true);return false;}return true;},preview(){return state?.points.length>1?[{kind:'polyline',points:state.points,closed:false}]:[];},dialog};
 }};
 })(typeof globalThis!=='undefined'?globalThis:this);

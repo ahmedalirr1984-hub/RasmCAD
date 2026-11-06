@@ -1,0 +1,58 @@
+[
+  {
+    "version": "AC1032",
+    "errors": 0,
+    "repairs": 0,
+    "entities": 141,
+    "types": {
+      "LWPOLYLINE": 25,
+      "LINE": 83,
+      "ARC": 4,
+      "CIRCLE": 4,
+      "TEXT": 13,
+      "SOLID": 12
+    }
+  },
+  {
+    "version": "AC1021",
+    "errors": 0,
+    "repairs": 0,
+    "entities": 141,
+    "types": {
+      "LWPOLYLINE": 25,
+      "LINE": 83,
+      "ARC": 4,
+      "CIRCLE": 4,
+      "TEXT": 13,
+      "SOLID": 12
+    }
+  },
+  {
+    "version": "AC1027",
+    "errors": 0,
+    "repairs": 0,
+    "entities": 141,
+    "types": {
+      "LWPOLYLINE": 25,
+      "LINE": 83,
+      "ARC": 4,
+      "CIRCLE": 4,
+      "TEXT": 13,
+      "SOLID": 12
+    }
+  },
+  {
+    "version": "AC1024",
+    "errors": 0,
+    "repairs": 0,
+    "entities": 141,
+    "types": {
+      "LWPOLYLINE": 25,
+      "LINE": 83,
+      "ARC": 4,
+      "CIRCLE": 4,
+      "TEXT": 13,
+      "SOLID": 12
+    }
+  }
+]

@@ -50,7 +50,7 @@
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const normalizedAngle = a => ((a % TAU) + TAU) % TAU;
   function arcSpan(start, end) { const span = normalizedAngle(end - start); return span < 1e-12 ? TAU : span; }
-  function onArc(a, start, end) { return normalizedAngle(a - start) <= arcSpan(start, end) + 1e-10; }
+  function onArc(a, start, end) { const delta=normalizedAngle(a-start);return delta<=arcSpan(start,end)+1e-10||TAU-delta<=1e-10; }
   function normalizedLayer(raw) {
     object(raw, 'Layer');
     return { name: string(get(raw, 'name'), 255, 'layer name', false), color: color(get(raw, 'color', '#e5edf5'), false),
@@ -464,7 +464,9 @@
     expect('END'); requireValue(text.slice(offset).trim() === '', 'Unexpected data after legacy drawing');
     const data = validateState({ entities, layers, currentLayer, nextId }), d = new Document(); Object.assign(d, data); return d;
   }
-  function exportDxf(doc) {
+  function exportDxf(doc,options={}) {
+    const version=options.version||'AC1021';
+    requireValue(['AC1021','AC1024','AC1027','AC1032'].includes(version),'Unsupported DXF version');
     const data = validateState(doc), lines = [];
     let handle = 1;
     const nextHandle = () => (handle++).toString(16).toUpperCase(), layerTableHandle = nextHandle();
@@ -472,7 +474,7 @@
     function base(type, e) { g(0, type); g(5, nextHandle()); g(100, 'AcDbEntity'); g(8, e.layer); if (e.color !== null) g(420, parseInt(e.color.slice(1), 16)); }
     function line(e, a, b) { base('LINE', e); g(100, 'AcDbLine'); g(10, a.x); g(20, a.y); g(30, 0); g(11, b.x); g(21, b.y); g(31, 0); }
     function text(e, p, value, h, angle) { base('TEXT', e); g(100, 'AcDbText'); g(10, p.x); g(20, p.y); g(30, 0); g(40, h); g(1, value); g(50, angle * 180 / PI); }
-    g(0, 'SECTION'); g(2, 'HEADER'); g(9, '$ACADVER'); g(1, 'AC1021'); g(9, '$DWGCODEPAGE'); g(3, 'ANSI_1252'); g(9, '$INSUNITS'); g(70, 0); g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'HEADER'); g(9, '$ACADVER'); g(1, version); g(9, '$DWGCODEPAGE'); g(3, 'ANSI_1252'); g(9, '$INSUNITS'); g(70, 0); g(0, 'ENDSEC');
     g(0, 'SECTION'); g(2, 'TABLES'); g(0, 'TABLE'); g(2, 'LAYER'); g(5, layerTableHandle); g(330, 0); g(100, 'AcDbSymbolTable'); g(70, data.layers.length);
     for (const layer of data.layers) { g(0, 'LAYER'); g(5, nextHandle()); g(330, layerTableHandle); g(100, 'AcDbSymbolTableRecord'); g(100, 'AcDbLayerTableRecord'); g(2, layer.name); g(70, layer.locked ? 4 : 0); g(62, layer.visible ? 7 : -7); g(420, parseInt(layer.color.slice(1), 16)); g(6, 'CONTINUOUS'); }
     g(0, 'ENDTAB'); g(0, 'ENDSEC'); g(0, 'SECTION'); g(2, 'ENTITIES');

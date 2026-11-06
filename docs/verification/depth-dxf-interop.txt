@@ -1,0 +1,7 @@
+Cannot create cache home directory: '/home/agent/.cache/ezdxf', cache files will not be saved.
+See also issue https://github.com/mozman/ezdxf/issues/923.
+PASS roundtrip.dxf: audit errors=0 fixes=0 INSUNITS=0; 9 unique handles
+PASS dimensions.dxf: audit errors=0 fixes=0 INSUNITS=0; 13 unique handles
+PASS legacy-plan.dxf: audit errors=0 fixes=0 INSUNITS=0; 124 unique handles
+PASS sample-plan.dxf: audit errors=0 fixes=0 INSUNITS=0; 125 unique handles
+PASS independent ezdxf parsing/audit, geometry, Arabic, dimensions and legacy plan

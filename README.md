@@ -1,16 +1,21 @@
-# RasmCAD Advanced 0.7
+# RasmCAD Advanced 0.8-dev
 
-**codex/m1 development branch:** M1-A accuracy, snap/tracking and repeat-command
-changes are documented in [docs/M1-A.md](docs/M1-A.md). Gate A is pending the
-mandatory file:// check; M1-B has not started. This branch does not replace main.
+**Command depth development preview:** current work is on `codex/command-depth`.
+See [the20-workflow guide](docs/COMMAND-DEPTH.md), [Arabic trial instructions](docs/TRY-0.8-AR.md),
+and [verification](docs/DEPTH-RESULTS.md). Main has not been updated. The source
+keeps Canvas2D and native format1. Genuine DWG writing remains unavailable.
+
+[Download the ready-to-open0.8-dev package](https://drive.google.com/file/d/1n4EJ1N2uK65xixFDjTVMO-1LU1PF_OQH/view?usp=drivesdk).
+Extract it andopen `RasmCAD-Advanced.html`;noPython/Node installation isneeded.
+The complete currentapplication source is on thisbranch. Validation:44suites
+pass;DWGencoding,fileprotocol/Edge andphysicalprinter limits are stated inresults.
 
 ## GitHub download
 
 Choose **Code → Download ZIP**, extract the repository, then double-click
 `restore-release.cmd` on Windows. It joins the numbered files in `dist/parts`,
 checks that the release is present, and opens `dist/RasmCAD-Advanced.html`.
-The program itself needs only Edge or Chrome. The ready-to-open HTML and the
-complete source bundle are also available in the
+The program itself needs only Edge or Chrome. The complete prior vendor/source bundle remains available in the
 [0.7 delivery on Google Drive](https://drive.google.com/file/d/1SJnl4HztNggnzmd_pVEGWNP8ZyvfWRCW/view?usp=drivesdk).
 
 Developers can run `node restore-release.cjs` to join and SHA-256-check the
@@ -18,11 +23,11 @@ HTML, then `node restore-vendor.cjs` to extract the bundled DWG engine and
 `node build.cjs` to rebuild. The exact upstream LibreDWG source archive,
 font source, and full test fixtures are in the complete Google Drive delivery.
 
-CAD import and writable-layer correction — 2026-11-06.
+Command options,selective property matching,plotting andSaveAs — development preview.
 
 An independent, English-language 2D CAD application that runs locally in a modern Edge or Chrome browser. Open `RasmCAD-Advanced.html` after extracting the ZIP. No Python, installer, administrator access, or unsigned EXE is required. The HTML includes its DWG WebAssembly engine and does not upload drawings or fetch conversion services.
 
-Save your current project, close the earlier 0.6 tab, extract the new archive into a new folder, and open its HTML. Check that **0.7** appears beside the application name. Drawings are stored only when you download a project.
+Save your current project, close earlier application tabs, extract the new archive into a new folder, and open its HTML. Check that **0.8-dev** appears beside the application name. Drawings are stored only when you download a project.
 
 This release **does not meet or claim 90% coverage of AutoCAD 2008**. `FEATURES.md` records the implemented functionality and significant gaps. `COMMAND_WORDS.txt` lists registered words, including aliases; aliases are not independent CAD features or proof of percentage coverage.
 

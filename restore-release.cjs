@@ -9,6 +9,6 @@ const fd=fs.openSync(out,'w');
 try{for(const part of parts)fs.writeSync(fd,fs.readFileSync(path.join(root,'dist','parts',part)));}finally{fs.closeSync(fd);}
 const crypto=require('node:crypto');
 const hash=crypto.createHash('sha256').update(fs.readFileSync(out)).digest('hex');
-const expected='6e7bede31f03d7919446ec6aa6a32725e501fa7fe6e580be63a8450807703543';
+const expected='80f90cf791dddbdf168423c454f70c237fdfa027dd6f9b33ef25e5faf8dcb378';
 if(hash!==expected)throw Error('Release hash mismatch: '+hash);
 console.log(out);

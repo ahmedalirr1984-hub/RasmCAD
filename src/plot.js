@@ -68,6 +68,8 @@ const n=value=>{if(!Number.isFinite(value))throw Error('Non-finite PDF geometry.
 function visible(doc,e){return (doc.layer?doc.layer(e.layer):doc.layers.find(l=>l.name===e.layer))?.visible!==false;}
 function color(doc,e,parent){return e.color||parent||(doc.layer?doc.layer(e.layer):doc.layers.find(l=>l.name===e.layer))?.color||'#000000';}
 function drawingBounds(doc){const b={min:{x:0,y:0},max:{x:0,y:0},valid:false};for(const e of doc.entities){if(!visible(doc,e))continue;const v=C.entityBounds(e);if(!v.valid)continue;if(!b.valid){b.min={...v.min};b.max={...v.max};b.valid=true;}else{b.min.x=Math.min(b.min.x,v.min.x);b.min.y=Math.min(b.min.y,v.min.y);b.max.x=Math.max(b.max.x,v.max.x);b.max.y=Math.max(b.max.y,v.max.y);}}return b;}
+function windowFromBounds(b){if(!b?.valid||!b.min||!b.max)throw Error('The requested display bounds are unavailable.');return{xmin:b.min.x,ymin:b.min.y,xmax:b.max.x,ymax:b.max.y};}
+function selectedDocument(doc,ids){if(!Array.isArray(ids)||!ids.length)throw Error('Select visible objects before plotting a selection.');const selected=new Set(ids),entities=doc.entities.filter(e=>selected.has(e.id)&&visible(doc,e));if(!entities.length)throw Error('No selected visible objects are available to plot.');return {...doc,entities};}
 function planPlot(doc,options={}){
  if(!doc||!Array.isArray(doc.entities)||!Array.isArray(doc.layers))throw Error('A drawing is required.');
  const paper=options.paper||'A4',preset=PAPERS[paper];if(!preset&&paper!=='Custom')throw Error('Unknown paper size.');
@@ -77,10 +79,10 @@ function planPlot(doc,options={}){
  if(widthMm>5000||heightMm>5000)throw Error('Paper dimensions must not exceed 5000 mm.');
  const marginMm=finite(options.marginMm??10,'Margin');if(marginMm<0||2*marginMm>=Math.min(widthMm,heightMm))throw Error('Margins leave no printable area.');
  const units=options.units||'mm',unitMm=UNITS[units];if(!unitMm)throw Error('Unknown drawing units.');
- const area=options.area||'extents';if(!['extents','window'].includes(area))throw Error('Plot area must be extents or window.');
+ const area=options.area||'extents';if(!['extents','window','display','selection','selectedBounds'].includes(area))throw Error('Plot area must be extents, window, display, selection or selected bounds.');
  let bounds;
- if(area==='window'){const w=options.window||{};bounds={min:{x:finite(w.xmin,'Window minimum X'),y:finite(w.ymin,'Window minimum Y')},max:{x:finite(w.xmax,'Window maximum X'),y:finite(w.ymax,'Window maximum Y')},valid:true};if(bounds.max.x<=bounds.min.x||bounds.max.y<=bounds.min.y)throw Error('Plot window must have positive width and height.');}
- else {bounds=drawingBounds(doc);if(!bounds.valid)throw Error('There is no visible geometry to plot.');}
+ if(area==='window'||area==='display'){const w=area==='display'?windowFromBounds(options.displayBounds):options.window||{};bounds={min:{x:finite(w.xmin,'Window minimum X'),y:finite(w.ymin,'Window minimum Y')},max:{x:finite(w.xmax,'Window maximum X'),y:finite(w.ymax,'Window maximum Y')},valid:true};if(bounds.max.x<=bounds.min.x||bounds.max.y<=bounds.min.y)throw Error('Plot window must have positive width and height.');}
+ else {bounds=drawingBounds(area==='selection'||area==='selectedBounds'?selectedDocument(doc,options.selectedIds):doc);if(!bounds.valid)throw Error('There is no visible geometry to plot.');}
  const drawableWidthMm=widthMm-2*marginMm,drawableHeightMm=heightMm-2*marginMm;
  const modelWidth=bounds.max.x-bounds.min.x,modelHeight=bounds.max.y-bounds.min.y;
  const fitScale=Math.max(modelWidth*unitMm/drawableWidthMm,modelHeight*unitMm/drawableHeightMm,1e-12);
@@ -91,11 +93,13 @@ function planPlot(doc,options={}){
  const factor=unitMm*MM/scale;
  const toPage=p=>({x:originMm.x*MM+(p.x-bounds.min.x)*factor,y:originMm.y*MM+(p.y-bounds.min.y)*factor});
  const lineWidthMm=positive(options.lineWidthMm??.25,'Line weight');if(lineWidthMm>5)throw Error('Base line weight must not exceed 5 mm.');
+ let maxWeight=1;const stack=[...(area==='selection'||area==='selectedBounds'?selectedDocument(doc,options.selectedIds):doc).entities];while(stack.length){const e=stack.pop();maxWeight=Math.max(maxWeight,Number(e.lineWidth)||1);if(e.kind==='compound')stack.push(...e.parts||[]);}const clipPaddingMm=lineWidthMm*(options.useLineweights===false?1:maxWeight)/2;
  const clipped=plottedWidthMm>drawableWidthMm+1e-7||plottedHeightMm>drawableHeightMm+1e-7;
  const warnings=[];if(clipped)warnings.push('Drawing exceeds the printable area at this scale and will be clipped.');
  warnings.push('Embedded DejaVu text substitutes source CAD fonts; complex shaping and unsupported glyphs may differ.');
- return {paper,orientation,widthMm,heightMm,marginMm,drawableWidthMm,drawableHeightMm,units,unitMm,area,bounds,fit,scale,fitScale,plottedWidthMm,plottedHeightMm,centered,originMm,factor,lineWidthMm,monochrome:options.monochrome!==false,useLineweights:options.useLineweights!==false,clipped,warnings,toPage};
+ return {paper,orientation,widthMm,heightMm,marginMm,drawableWidthMm,drawableHeightMm,units,unitMm,area,bounds,fit,scale,fitScale,plottedWidthMm,plottedHeightMm,centered,originMm,factor,lineWidthMm,monochrome:options.monochrome!==false,useLineweights:options.useLineweights!==false,clipPaddingMm,clipped,warnings,toPage};
 }
+function windowClip(plan){const pad=plan.clipPaddingMm||plan.lineWidthMm/2;return{x:plan.originMm.x-(plan.plottedWidthMm===0?pad:0),y:plan.originMm.y-(plan.plottedHeightMm===0?pad:0),width:plan.plottedWidthMm===0?2*pad:plan.plottedWidthMm,height:plan.plottedHeightMm===0?2*pad:plan.plottedHeightMm};}
 function rgb(hex){return[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);}
 function bytes(s){return new TextEncoder().encode(s);}
 function join(chunks){const result=new Uint8Array(chunks.reduce((sum,v)=>sum+v.length,0));let at=0;for(const chunk of chunks){result.set(chunk,at);at+=chunk.length;}return result;}
@@ -120,8 +124,8 @@ function serializePdf(doc,options={}){
   else throw Error('Plot does not support entity kind '+e.kind+'.');
  }
  commands.push('q',n(plan.marginMm*MM)+' '+n(plan.marginMm*MM)+' '+n(plan.drawableWidthMm*MM)+' '+n(plan.drawableHeightMm*MM)+' re W n');
- if(plan.area==='window')commands.push(n(plan.originMm.x*MM)+' '+n(plan.originMm.y*MM)+' '+n(plan.plottedWidthMm*MM)+' '+n(plan.plottedHeightMm*MM)+' re W n');
- for(const e of doc.entities)emit(e);commands.push('Q');
+ if(['window','display','selectedBounds'].includes(plan.area)){const clip=windowClip(plan);commands.push(n(clip.x*MM)+' '+n(clip.y*MM)+' '+n(clip.width*MM)+' '+n(clip.height*MM)+' re W n');}
+ for(const e of (plan.area==='selection'?selectedDocument(doc,options.selectedIds):doc).entities)emit(e);commands.push('Q');
  const objects=[null],addObject=value=>{objects.push(typeof value==='string'?bytes(value):value);return objects.length-1;};
  const stream=(data,extra='')=>join([bytes('<< /Length '+data.length+' '+extra+' >>\nstream\n'),data,bytes('\nendstream')]);
  const fontData=fromBase64(FONT.base64),fontFile=addObject(stream(fontData,'/Length1 '+fontData.length));
@@ -141,5 +145,26 @@ function serializePdf(doc,options={}){
  const result=join(chunks);if(result.length>64*1024*1024)throw Error('PDF exceeds 64 MiB.');
  Object.defineProperties(result,{plotPlan:{value:plan},warnings:{value:warnings},primitiveCount:{value:primitiveCount}});return result;
 }
-return Object.freeze({PAPERS,UNITS,planPlot,serializePdf,drawingBounds});
+/* Vector SVG uses the same physical plot plan as PDF. Browser print font shaping
+ * may differ from the embedded PDF font; no images or external fonts are used. */
+function serializeSvg(doc,options={}){
+ const plan=planPlot(doc,options),out=[],warnings=plan.warnings.slice(),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));let primitiveCount=0;
+ const point=p=>{const q=plan.toPage(p);return{x:q.x/MM,y:plan.heightMm-q.y/MM};},xy=p=>{const q=point(p);return n(q.x)+' '+n(q.y);};
+ function path(points,close,fill,style){if(!points?.length)return;out.push('<path d="M '+points.map(xy).join(' L ')+(close?' Z':'')+'" '+(fill?style.replace(/stroke="[^"]*"/,'stroke="none"'):style)+(fill?' fill="currentColor"':' fill="none"')+'/>');primitiveCount++;}
+ function emit(e,parentInk,depth=0){if(depth>8)throw Error('Plot compound nesting is too deep.');if(!visible(doc,e))return;const ink=plan.monochrome?'#000000':color(doc,e,parentInk),style='stroke="'+esc(ink)+'" color="'+esc(ink)+'" stroke-width="'+n(plan.lineWidthMm*(plan.useLineweights?(e.lineWidth||1):1))+'" stroke-linecap="round" stroke-linejoin="round"';
+  if(e.kind==='compound'){if(e.subtype==='hatch'&&String(e.data?.pattern).toUpperCase()==='SOLID'&&e.data?.loops?.length){const d=e.data.loops.filter(l=>l.length).map(l=>'M '+l.map(xy).join(' L ')+' Z').join(' ');out.push('<path d="'+d+'" fill="'+esc(ink)+'" fill-rule="evenodd" stroke="none"/>');primitiveCount++;}else for(const part of e.parts||[])emit(part,ink,depth+1);}
+  else if(e.kind==='line'||e.kind==='polyline')path(e.points,e.closed,false,style);
+  else if(e.kind==='solid')path(e.points,true,true,style);
+  else if(e.kind==='circle'||e.kind==='arc'){const c=point(e.points[0]),r=e.radius*plan.factor/MM,span=e.kind==='circle'?TAU:C.arcSpan(e.startAngle,e.endAngle);if(span>=TAU-1e-12)out.push('<circle cx="'+n(c.x)+'" cy="'+n(c.y)+'" r="'+n(r)+'" '+style+' fill="none"/>');else{const a=e.startAngle,b=a+span,p={x:e.points[0].x+e.radius*Math.cos(a),y:e.points[0].y+e.radius*Math.sin(a)},q={x:e.points[0].x+e.radius*Math.cos(b),y:e.points[0].y+e.radius*Math.sin(b)};out.push('<path d="M '+xy(p)+' A '+n(r)+' '+n(r)+' 0 '+(span>Math.PI?1:0)+' 0 '+xy(q)+'" '+style+' fill="none"/>');}primitiveCount++;}
+  else if(e.kind==='text'){const q=point(e.points[0]);out.push('<text x="'+n(q.x)+'" y="'+n(q.y)+'" font-family="DejaVu Sans, Arial, sans-serif" font-size="'+n(e.textHeight*plan.factor/MM)+'" fill="'+esc(ink)+'" transform="rotate('+n(-(e.startAngle||0)*180/Math.PI)+' '+n(q.x)+' '+n(q.y)+')">'+esc(e.text)+'</text>');primitiveCount++;}
+  else if(e.kind==='dimension'){const g=C.annotationGeometry(e);for(const s of g.segments)emit({kind:'line',points:[s.a,s.b],layer:e.layer,color:s.color||ink,lineWidth:e.lineWidth},ink,depth+1);for(const a of g.arcs)emit({kind:'arc',points:[a.center],radius:a.radius,startAngle:a.startAngle,endAngle:a.endAngle,layer:e.layer,color:a.color||ink,lineWidth:e.lineWidth},ink,depth+1);for(const f of g.fills||[])emit({kind:'solid',points:f.points,layer:e.layer,color:f.color||ink,lineWidth:e.lineWidth},ink,depth+1);for(const l of g.labels)emit({kind:'text',points:[l.point],text:l.text,textHeight:l.height,startAngle:l.angle||0,layer:e.layer,color:l.color||ink},ink,depth+1);}
+  else throw Error('Plot does not support entity kind '+e.kind+'.');
+ }
+ const rect=windowClip(plan),clipWindow=['window','display','selectedBounds'].includes(plan.area),clip=clipWindow?'<clipPath id="rasmcad-plot-window-clip"><rect x="'+n(rect.x)+'" y="'+n(plan.heightMm-rect.y-rect.height)+'" width="'+n(rect.width)+'" height="'+n(rect.height)+'"/></clipPath>':'';
+ out.push('<svg xmlns="http://www.w3.org/2000/svg" width="'+n(plan.widthMm)+'mm" height="'+n(plan.heightMm)+'mm" viewBox="0 0 '+n(plan.widthMm)+' '+n(plan.heightMm)+'" role="img" aria-label="Drawing plot preview"><rect width="100%" height="100%" fill="white"/><defs><clipPath id="rasmcad-plot-paper-clip"><rect x="'+n(plan.marginMm)+'" y="'+n(plan.marginMm)+'" width="'+n(plan.drawableWidthMm)+'" height="'+n(plan.drawableHeightMm)+'"/></clipPath>'+clip+'</defs><g clip-path="url(#rasmcad-plot-paper-clip)">'+(clipWindow?'<g clip-path="url(#rasmcad-plot-window-clip)">':''));
+ for(const e of (plan.area==='selection'?selectedDocument(doc,options.selectedIds):doc).entities)emit(e);out.push((clipWindow?'</g>':'')+'</g></svg>');
+ warnings.push('Browser printer text uses local font substitution; printer paper, margins and 100% scale must match this plan.');
+ return{svg:out.join(''),plotPlan:plan,warnings,primitiveCount};
+}
+return Object.freeze({PAPERS,UNITS,planPlot,serializePdf,serializeSvg,drawingBounds});
 });
