@@ -1,0 +1,13 @@
+# M1 references
+
+Only the user-approved repositories were studied. **Code copied: none** throughout. Static source review only; no reference application executed.
+
+|URL / commit|License verified|Behavior studied / intended idea|
+|---|---|---|
+|https://github.com/HakanSeven12/OpenCADStudio/tree/f08ff4a10890558a5e836fc108ede92dbfe9ef2b|LICENSE GPLv3|[snap328](https://github.com/HakanSeven12/OpenCADStudio/blob/f08ff4a10890558a5e836fc108ede92dbfe9ef2b/src/snap.rs#L328),[override554](https://github.com/HakanSeven12/OpenCADStudio/blob/f08ff4a10890558a5e836fc108ede92dbfe9ef2b/src/snap.rs#L554),[priority1760](https://github.com/HakanSeven12/OpenCADStudio/blob/f08ff4a10890558a5e836fc108ede92dbfe9ef2b/src/snap.rs#L1760):temporary overrides,pixel aperture,tracking,discrete priority;[Offset Undo574](https://github.com/HakanSeven12/OpenCADStudio/blob/f08ff4a10890558a5e836fc108ede92dbfe9ef2b/src/modules/draw/modify/offset.rs#L574). Ellipse behavior checked but implementation deferred until Gate A.|
+|https://github.com/mlightcad/cad-viewer/tree/ea0c8b59b2411964d6846bbacee7645fb93e8b57|LICENSE MIT|[Resolver251](https://github.com/mlightcad/cad-viewer/blob/ea0c8b59b2411964d6846bbacee7645fb93e8b57/packages/cad-simple-viewer/src/editor/input/AcEdOsnapResolver.ts#L251):snap priority/aperture;explicit source/pair/time limits50–68.No editing algorithms used.No new code attribution required.|
+|https://github.com/volodymyr4509/kulmanlab/tree/2fa40cc31f8d35acab53dc27523df879b5bd1509|Not verified:README says MIT;no LICENSE in tree|Current repo is Astro documentation,not Angular editor source.[Ellipse11](https://github.com/volodymyr4509/kulmanlab/blob/2fa40cc31f8d35acab53dc27523df879b5bd1509/src/content/docs/commands/ellipse.md#L11) README behavior only;geometry and reuse rights not verified.No reuse.|
+|https://github.com/LibreCAD/LibreCAD/tree/e2a8c29311a4a9dea52aeb0ad0f73440d80a1f16|LICENSE GPLv2|[TRIM138](https://github.com/LibreCAD/LibreCAD/blob/e2a8c29311a4a9dea52aeb0ad0f73440d80a1f16/librecad/src/actions/drawing/modify/lc_action_modify_trim.cpp#L138):return to repeated target pick.Behavior only.|
+|https://github.com/qcad/qcad/tree/a3a3eafa8a5de01c21d474c30f80a9473d7dbfdb|LICENSE.txt GPLv3 with optional exceptions|[Offset49](https://github.com/qcad/qcad/blob/a3a3eafa8a5de01c21d474c30f80a9473d7dbfdb/scripts/Modify/Offset/Offset.js#L49),[Trim201](https://github.com/qcad/qcad/blob/a3a3eafa8a5de01c21d474c30f80a9473d7dbfdb/scripts/Modify/Trim/Trim.js#L201):repeat and Escape semantics.Behavior only.|
+
+All URLs opened successfully. Autodesk2006 implementation not independently verified; comparison target comes from user requirements. Existing bundled dependencies and licenses remain listed in THIRD_PARTY.md.
