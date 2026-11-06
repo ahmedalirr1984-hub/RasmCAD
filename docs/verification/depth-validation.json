@@ -1,0 +1,373 @@
+{
+  "htmlSha256": "80f90cf791dddbdf168423c454f70c237fdfa027dd6f9b33ef25e5faf8dcb378",
+  "htmlBytes": 15749274,
+  "suites": [
+    {
+      "file": "advanced-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/advanced-browser.test.cjs.log"
+    },
+    {
+      "file": "advanced-edit-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/advanced-edit-v07.test.cjs.log"
+    },
+    {
+      "file": "advanced-ui-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/advanced-ui-v07.test.cjs.log"
+    },
+    {
+      "file": "advanced.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/advanced.test.cjs.log"
+    },
+    {
+      "file": "blocks-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/blocks-v07.test.cjs.log"
+    },
+    {
+      "file": "browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/browser.test.cjs.log"
+    },
+    {
+      "file": "command-ui-v05.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/command-ui-v05.test.cjs.log"
+    },
+    {
+      "file": "commands-v05.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/commands-v05.test.cjs.log"
+    },
+    {
+      "file": "compound-modify-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/compound-modify-v07.test.cjs.log"
+    },
+    {
+      "file": "core-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/core-v07.test.cjs.log"
+    },
+    {
+      "file": "core.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/core.test.cjs.log"
+    },
+    {
+      "file": "depth-commands-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-commands-browser.test.cjs.log"
+    },
+    {
+      "file": "depth-construction.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-construction.test.cjs.log"
+    },
+    {
+      "file": "depth-core.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-core.test.cjs.log"
+    },
+    {
+      "file": "depth-dimensions-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-dimensions-browser.test.cjs.log"
+    },
+    {
+      "file": "depth-dimensions.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-dimensions.test.cjs.log"
+    },
+    {
+      "file": "depth-dwg.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-dwg.test.cjs.log"
+    },
+    {
+      "file": "depth-geometry.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-geometry.test.cjs.log"
+    },
+    {
+      "file": "depth-plot-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-plot-browser.test.cjs.log"
+    },
+    {
+      "file": "depth-plot.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-plot.test.cjs.log"
+    },
+    {
+      "file": "depth-save-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-save-browser.test.cjs.log"
+    },
+    {
+      "file": "depth-save.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/depth-save.test.cjs.log"
+    },
+    {
+      "file": "dimension-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/dimension-browser.test.cjs.log"
+    },
+    {
+      "file": "dimension-styles.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/dimension-styles.test.cjs.log"
+    },
+    {
+      "file": "dimensions-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/dimensions-v07.test.cjs.log"
+    },
+    {
+      "file": "dxf-binary-v06.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/dxf-binary-v06.test.cjs.log"
+    },
+    {
+      "file": "formats-browser-v06.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/formats-browser-v06.test.cjs.log"
+    },
+    {
+      "file": "grips-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/grips-browser.test.cjs.log"
+    },
+    {
+      "file": "grips.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/grips.test.cjs.log"
+    },
+    {
+      "file": "hatch-ui-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/hatch-ui-v07.test.cjs.log"
+    },
+    {
+      "file": "hatch-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/hatch-v07.test.cjs.log"
+    },
+    {
+      "file": "import-v06.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/import-v06.test.cjs.log"
+    },
+    {
+      "file": "input-v05.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/input-v05.test.cjs.log"
+    },
+    {
+      "file": "interaction-regressions.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/interaction-regressions.test.cjs.log"
+    },
+    {
+      "file": "layers-v06.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/layers-v06.test.cjs.log"
+    },
+    {
+      "file": "m1-accuracy.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/m1-accuracy.test.cjs.log"
+    },
+    {
+      "file": "m1-browser.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/m1-browser.test.cjs.log"
+    },
+    {
+      "file": "m1-characterization.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/m1-characterization.test.cjs.log"
+    },
+    {
+      "file": "m1-tracking.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/m1-tracking.test.cjs.log"
+    },
+    {
+      "file": "plot-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/plot-v07.test.cjs.log"
+    },
+    {
+      "file": "render-v05.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/render-v05.test.cjs.log"
+    },
+    {
+      "file": "selection.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/selection.test.cjs.log"
+    },
+    {
+      "file": "snaps-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/snaps-v07.test.cjs.log"
+    },
+    {
+      "file": "systems-ui-v07.test.cjs",
+      "exitCode": 0,
+      "unchanged": true,
+      "log": "build/depth-validation/systems-ui-v07.test.cjs.log"
+    }
+  ],
+  "browser": {
+    "htmlSha256": "80f90cf791dddbdf168423c454f70c237fdfa027dd6f9b33ef25e5faf8dcb378",
+    "maxSnapError": 4.440892098500626e-16,
+    "tolerance": 1e-8,
+    "results": [
+      {
+        "name": "CIRCLE3P mouse construction at survey origin",
+        "status": "PASS"
+      },
+      {
+        "name": "CIRCLE3P exact typed coordinates use the same stable solver",
+        "status": "PASS"
+      },
+      {
+        "name": "END one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "MID one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "CEN one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "QUA one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "INT one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "PER one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "TAN one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "NEA one-shot mouse snap commits analytic point and restores running modes",
+        "status": "PASS"
+      },
+      {
+        "name": "COPY multiple destinations and local U preserve original base and source",
+        "status": "PASS"
+      },
+      {
+        "name": "intervening property edit does not consume COPY local Undo accounting",
+        "status": "PASS"
+      },
+      {
+        "name": "TRIM repeats, rejects Fence instead of invoking FILLET, and U stays active",
+        "status": "PASS"
+      },
+      {
+        "name": "EXTEND repeats and local Undo restores the last target",
+        "status": "PASS"
+      },
+      {
+        "name": "OFFSET repeats with retained distance/source and command-local Undo",
+        "status": "PASS"
+      },
+      {
+        "name": "FROM temporary mouse base, polar tracking and cursor dynamic input",
+        "status": "PASS"
+      },
+      {
+        "name": "object tracking acquires point and commits exact aligned coordinates",
+        "status": "PASS"
+      },
+      {
+        "name": "FROM and typed one-shot state route consistently into advanced point prompts",
+        "status": "PASS"
+      },
+      {
+        "name": "advanced point prompts honor polar tracking",
+        "status": "PASS"
+      },
+      {
+        "name": "object tracking takes precedence over Ortho without a false marker",
+        "status": "PASS"
+      },
+      {
+        "name": "save/reopen deep comparison retains blocks,hatches,dimensions,styles,layers,plot and Arabic",
+        "status": "PASS"
+      }
+    ],
+    "errors": [],
+    "external": [],
+    "fileProtocol": {
+      "status": "BLOCKED",
+      "error": "page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at file:///workspace/rasmcad-depth/dist/RasmCAD-Advanced.html\nCall log:\n\u001b[2m  - navigating to \"file:///workspace/rasmcad-depth/dist/RasmCAD-Advanced.html\", waiting until \"load\"\u001b[22m\n"
+    },
+    "edge": "Not installed"
+  },
+  "fileProtocol": {
+    "status": "BLOCKED",
+    "error": "page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at file:///workspace/rasmcad-depth/dist/RasmCAD-Advanced.html\nCall log:\n\u001b[2m  - navigating to \"file:///workspace/rasmcad-depth/dist/RasmCAD-Advanced.html\", waiting until \"load\"\u001b[22m\n"
+  },
+  "scope": "Command depth development preview; no AutoCAD parity claim"
+}

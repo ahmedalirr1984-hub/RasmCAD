@@ -16,11 +16,11 @@
   let lastCreatedId = null, dimensionDefaults = null;
   let propertySelectionKey = '', propertyDirty = new Set();
   let gripPreview = null;
-  let advanced=null,plotUI=null,snapType='';
+  let advanced=null,plotUI=null,saveUI=null,plotWindowPick=null,snapType='';
   let oneShot=null,aperture=10,snapWarning='',polarIncrement=0,otrack=false,dynamicInput=false;
   let trackingAnchors=[],trackingHit=null,acquisition=null,fromBase=null,awaitFrom=false;
   let snapPriority=null;
-  const VERSION='0.7', commandHistory=[], inputHistory=[], diagnosticEvents=[];
+  const VERSION='0.8-dev', commandHistory=[], inputHistory=[], diagnosticEvents=[];
   let historyIndex=0, historyDraft='', suggestions=[], suggestionIndex=-1;
   const accent = '#69dfc3', ink = '#dce7ef';
   const V = {
@@ -216,7 +216,7 @@
       }
       const target=next.layer(e.layer);if(!target||!target.visible||target.locked)throw Error('Target layer is hidden, locked or missing');
     }
-    next.serialize();doc.checkpoint();doc.entities=next.entities;propertyDirty.clear();changed();log('Changed properties applied; other object properties were preserved.');
+    if(next.serialize()===doc.serialize()){propertyDirty.clear();sync();log('No property values changed.');return;}doc.checkpoint();doc.entities=next.entities;propertyDirty.clear();changed();log('Changed properties applied; other object properties were preserved.');
   }
   function defaultDimensionStyle(){
     if(doc.resources?.currentDimStyle)return window.RasmDimensions.currentStyle(doc);
@@ -341,8 +341,21 @@
                                    'DIMDIAMETER: select a circle/arc, then specify label location.'
     };
     $('prompt').textContent = extra[tool] || prompts[tool] || 'Specify input in the command field.';
+    if(tool==='copy')$('prompt').textContent=params.copyCountInput?'COPY Array: enter count including original (2..10001).':(points.length?'COPY '+(params.copyMode||'multiple')+(params.copyCount?' Array '+params.copyCount+(params.copyFit?' Fit':' Spacing'):'')+': destination; Single/Multiple/Array/Fit/U; Enter finishes.':'COPY: select objects/base point; Single/Multiple/Array options.');
+    if(['rotate','scale'].includes(tool)&&params.reference)$('prompt').textContent=tool.toUpperCase()+(params.reference==='target'?': new '+(tool==='rotate'?'angle':'length')+' as number or point.':': reference '+(tool==='rotate'?'angle':'length')+' as number or two points.');
+    if(tool==='rectangle'&&(params.rectStage||params.rectWidth))$('prompt').textContent=params.rectStage?'RECTANGLE Dimensions: enter '+params.rectStage+'.':'RECTANGLE: pick quadrant for entered width/height.';
+    if(tool==='arc'&&params.arcMode==='3P')$('prompt').textContent='ARC 3P: '+['start point.','point on arc.','end point.'][points.length];
+    if(tool==='circle'&&params.circleMode==='TTR')$('prompt').textContent=params.tangentLines?.length===2?'CIRCLE TTR: enter positive radius.':'CIRCLE TTR: pick '+(params.tangentLines?.length?'second':'first')+' LINE.';
+    if(tool==='mirror')$('prompt').textContent='MIRROR '+(params.mirrorKeep===false?'Delete':'Keep')+': '+(points.length?'second':'first')+' axis point; KEEP/DELETE source.';
+    if(tool==='matchprop')$('prompt').textContent=params.source?'MATCHPROP: targets; Settings; U undo; Enter/Esc finishes.':'MATCHPROP: pick source; Settings chooses fields.';
+    if(['trim','extend'].includes(tool))$('prompt').textContent=tool.toUpperCase()+': repeated target picks; EDGE '+(params.edge||'none')+'; U undo; Enter/Esc finishes.';
+    if(tool==='offset')$('prompt').textContent=params.value==null?'OFFSET: distance or THROUGH; then side point.':'OFFSET '+(params.offsetThrough?'Through':'distance '+params.value)+': side point; LAYER CURRENT/SOURCE; ERASE ON/OFF; U undo.';
+    if(tool==='chamfer'&&params.chamferAngleInput)$('prompt').textContent='CHAMFER Angle: enter '+params.chamferAngleInput+'.';
+
+
   }
   function setTool(next, focus = true) {
+    if(plotWindowPick){const callback=plotWindowPick.callback;plotWindowPick=null;callback(null);}
     if(next==='explode'&&advanced){advanced.execute('EXPLODE');return;}
     if(advanced?.active)advanced.cancel();
     if (tool==='polyline'&&points.length>=2&&next!==tool){const p=points;points=[];append(make('polyline',p,{closed:false}));}
@@ -377,6 +390,7 @@
     prompt();sync();log(selected.size+' objects selected. Follow the command prompt.');
   }
   function finishCommand(){
+    if(plotWindowPick){log('PLOT: pick both window corners, or Esc to cancel.',true);return;}
     if(advanced?.active){advanced.finish();return;}
     if(params.acquiring){commitSelection();return;}
     if(tool==='polyline'){finishPolyline(false);return;}
@@ -392,6 +406,7 @@
     setTool('select');log('Command finished. Select objects or start another command.');
   }
   function cancelCommand(){
+    if(plotWindowPick){const cb=plotWindowPick.callback;plotWindowPick=null;points=[];setTool('select',false);cb(null);return;}
     if(advanced?.active)advanced.cancel();
     if(tool==='polyline'&&points.length>=2){finishPolyline(false);}else{points=[];setTool('select',false);}
     selected.clear();$('command').value='';previewWorld=null;updateSuggestions();sync();log('Command canceled. Completed geometry has been kept.');canvas.focus();
@@ -408,6 +423,11 @@
   function make(kind, p, extra = {}) {
     return {kind, points: p.map(q => ({...q})), ...extra};
   }
+  function arcEntity(values,mode){
+    let center=values[0],start=values[1],end=values[2],r=C.distance(center,start);
+    if(mode==='3P'){const[first,mid,last]=values,circle=Commands.circleThrough3Points(first,mid,last);center=circle.center;r=circle.radius;const mod=a=>(a%(2*Math.PI)+2*Math.PI)%(2*Math.PI),a=Math.atan2(first.y-center.y,first.x-center.x),m=Math.atan2(mid.y-center.y,mid.x-center.x),b=Math.atan2(last.y-center.y,last.x-center.x);if(mod(m-a)<=mod(b-a)){start=first;end=last;}else{start=last;end=first;}}
+    if(r<1e-9)throw Error('Arc radius must be positive.');return make('arc',[center],{radius:r,startAngle:Math.atan2(start.y-center.y,start.x-center.x),endAngle:Math.atan2(end.y-center.y,end.x-center.x)});
+  }
   function hitAt(p) {
     return S.pick(doc,p,8/zoom);
   }
@@ -417,9 +437,9 @@
     setTool('select');
     log('Edit completed. ' + ids.length + ' resulting objects.');
   }
-  const repeating=()=>['trim','extend','offset','copy'].includes(tool);
+  const repeating=()=>['trim','extend','offset','copy','matchprop'].includes(tool);
   function repeatedEdit(ids){params.editCount=(params.editCount||0)+1;params.lastEditState=doc.serialize();changed();prompt();sync();log(tool.toUpperCase()+': edit completed. Pick again; U undo; Enter/Esc finish.');return ids;}
-  function undoRepeated(){if(params.lastEditState&&doc.serialize()!==params.lastEditState){setTool('select',false);history();log('Intervening document edit undone. Repeated command ended; Undo remains available.');return;}if(!params.editCount){log('No edits in this command to undo.');return;}doc.undo();params.editCount--;params.lastEditState=doc.serialize();selected=new Set((tool==='copy'?params.copySource||[]:[...selected]).filter(id=>doc.entities.some(e=>e.id===id)));changed();prompt();sync();log('Last '+tool.toUpperCase()+' edit undone. Continue or Enter/Esc.');}
+  function undoRepeated(){if(params.lastEditState&&doc.serialize()!==params.lastEditState){setTool('select',false);history();log('Intervening document edit undone. Repeated command ended; Undo remains available.');return;}if(!params.editCount){log('No edits in this command to undo.');return;}doc.undo();params.editCount--;params.lastEditState=doc.serialize();selected=new Set((tool==='copy'?params.copySource||[]:tool==='offset'?params.offsetSourceHistory?.pop()||[...selected]:[...selected]).filter(id=>doc.entities.some(e=>e.id===id)));changed();prompt();sync();log('Last '+tool.toUpperCase()+' edit undone. Continue or Enter/Esc.');}
   function measured(result, message) {
     lastMeasurement = result;
     setTool('select');
@@ -430,35 +450,27 @@
       measured({type: 'id', point: p}, 'ID: X = ' + fmt(p.x) + '   Y = ' + fmt(p.y));
       return true;
     }
+    if(tool==='circle'&&params.circleMode==='TTR'){if(params.tangentLines.length>=2)throw Error('CIRCLE TTR: enter radius before picking another object.');const e=hitAt(p);if(!e||e.kind!=='line')throw Error('TTR: pick a LINE object.');if(params.tangentLines.some(x=>x.entity.id===e.id))throw Error('Pick a different second LINE.');params.tangentLines.push({entity:e,pick:{...p}});prompt();if(params.tangentLines.length===2)log('CIRCLE TTR: enter positive radius. Supporting line extensions are allowed.');return true;}
     if (tool === 'matchprop') {
       const e = hitAt(p);
       if (!e) throw Error('Pick a source/target object');
       if (!params.source) {
         params.source = e;
-        log('MATCHPROP: now pick the target object.');
+        log('MATCHPROP: pick multiple targets; S Settings; U Undo; Enter/Esc finishes.');
         return true;
       }
-      const next = C.Document.parse(doc.serialize()),
-            target = next.entities.find(x => x.id === e.id), source = params.source;
-      target.layer = source.layer;
-      target.color = source.color;
-      target.lineWidth = source.lineWidth;
-      target.textHeight = source.textHeight;
-      next.serialize();
-      doc.checkpoint();
-      doc.entities = next.entities;
-      finishEdit([e.id]);
+      const before=doc.serialize(),ids=window.RasmProperties.matchProperties(doc,params.source.id,[e.id],{fields:params.matchFields||window.RasmProperties.defaults});if(ids.length&&doc.serialize()!==before){selected=new Set(ids);repeatedEdit(ids);}else log('MATCHPROP: source and target are the same or no properties changed.');
       return true;
     }
     if (tool === 'trim' || tool === 'extend') {
       const e = hitAt(p);
       if (!e) throw Error('Pick an object close to the portion or endpoint to edit');
-      repeatedEdit(E[tool](doc, e.id, p, params.boundaries || []));
+      repeatedEdit(E[tool](doc, e.id, p, params.boundaries || [],{edge:params.edge||'none'}));
       return true;
     }
     if (tool === 'offset') {
       if (params.value == null) throw Error('Enter offset distance first');
-      repeatedEdit(E.offset(doc, [...selected], params.value, p));
+      const sourceIds=[...selected],ids=E.offset(doc,sourceIds,params.value,p,{through:!!params.offsetThrough,layer:params.offsetLayer||'source',eraseSource:!!params.offsetErase});params.offsetSourceHistory??=[];params.offsetSourceHistory.push(sourceIds);if(params.offsetErase)selected=new Set(ids);repeatedEdit(ids);
       return true;
     }
     if (tool === 'fillet' || tool === 'chamfer') {
@@ -472,15 +484,15 @@
         return true;
       }
       const ids = tool === 'fillet' ?
-          E.fillet(doc, params.first, e.id, params.value, params.pick, p) :
-          E.chamfer(doc, params.first, e.id, params.value, params.second, params.pick, p);
+          E.fillet(doc, params.first, e.id, params.value, params.pick, p,{trim:params.trim!==false}) :
+          params.chamferAngle!=null?E.chamferAngle(doc,params.first,e.id,params.value,params.chamferAngle,params.pick,p,{trim:params.trim!==false}):E.chamfer(doc, params.first, e.id, params.value, params.second, params.pick, p,{trim:params.trim!==false});
       finishEdit(ids);
       return true;
     }
     if (tool === 'mirror') {
       points.push(p);
       if (points.length === 2)
-        finishEdit(E.mirror(doc, [...selected], points[0], points[1], true));
+        finishEdit(E.mirror(doc, [...selected], points[0], points[1], params.mirrorKeep!==false));
       else
         prompt();
       return true;
@@ -583,6 +595,7 @@
     setTool('select');
   }
   function acceptPoint(p) {
+    if(plotWindowPick){plotWindowPick.points.push({...p});if(plotWindowPick.points.length===2){const[a,b]=plotWindowPick.points;if(Math.abs(a.x-b.x)<1e-9||Math.abs(a.y-b.y)<1e-9){plotWindowPick.points.pop();throw Error('Plot window needs nonzero width and height.');}const callback=plotWindowPick.callback;plotWindowPick=null;setTool('select',false);callback({valid:true,min:{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y)},max:{x:Math.max(a.x,b.x),y:Math.max(a.y,b.y)}});}else{log('PLOT: pick opposite window corner.');}return;}
     if(awaitFrom){fromBase={...p};awaitFrom=false;oneShot=null;prompt();log('FROM: enter @dx,dy or @distance<angle from the temporary base.');return;}
     if(fromBase){fromBase=null;}
     oneShot=null;
@@ -591,6 +604,7 @@
         Math.abs(p.y) > 1e12)
       throw Error('Coordinates out of range.');
     if(params.acquiring){pick(worldToScreen(p),{});return;}
+    if(tool==='rectangle'&&params.rectStage)throw Error('Enter rectangle '+params.rectStage+' before picking its quadrant.');
     const savedPoints=points.map(q=>({...q}));
     try {
     if (advancedPoint(p)) return;
@@ -599,39 +613,28 @@
       return;
     }
     if (['move', 'copy'].includes(tool)) {
-      if (!points.length){
-        points = [p];
-        if(tool==='copy')params.copySource=[...selected];
-      }else {
-        const delta = V.sub(p, points[0]), next = C.Document.parse(doc.serialize());
-        let ids = (tool==='copy'?params.copySource:[...selected]).filter(id => doc.entities.some(e => e.id === id && editable(e)));
-        if (tool === 'copy') {
-          ids = ids.map(id => {
-            const e = doc.entities.find(e => e.id === id);
-            return next.add({...e, id: undefined});
-          });
-        }
-        next.transform(ids, {translation: delta});
-        doc.checkpoint();
-        doc.entities = next.entities;
-        doc.nextId = next.nextId;
-        selected = new Set(ids);
-        changed();
-        log(tool === 'copy' ? 'Objects copied.' : 'Objects moved.');
-        if(tool==='copy')repeatedEdit(ids);else setTool('select');
+      if (!points.length){points=[p];if(tool==='copy')params.copySource=[...selected];}
+      else {
+        const delta=V.sub(p,points[0]),next=C.Document.parse(doc.serialize());
+        const sourceIds=(tool==='copy'?params.copySource:[...selected]).filter(id=>doc.entities.some(e=>e.id===id&&editable(e)));
+        if(!sourceIds.length)throw Error('Original selection is no longer editable.');
+        let ids=sourceIds;
+        if(tool==='copy'){
+          const count=params.copyCount||2,total=count-1;if(total*sourceIds.length>10000)throw Error('COPY Array exceeds 10000 new objects.');ids=[];
+          for(let i=1;i<count;i++){const created=sourceIds.map(id=>next.add({...doc.entities.find(e=>e.id===id),id:undefined}));const factor=params.copyFit?i/(count-1):i;next.transform(created,{translation:V.mul(delta,factor)});ids.push(...created);}
+        }else next.transform(ids,{translation:delta});
+        next.serialize();doc.checkpoint();doc.entities=next.entities;doc.nextId=next.nextId;selected=new Set(ids);changed();
+        if(tool==='copy'){const single=params.copyMode==='single';repeatedEdit(ids);if(single)setTool('select');}else setTool('select');
       }
-      prompt();
-      schedule();
-      return;
+      prompt();schedule();return;
     }
-    if (['rotate', 'scale'].includes(tool)) {
-      if (!points.length)
-        points = [p];
-      else
-        log('Enter a numeric value in the command field.');
-      prompt();
-      schedule();
-      return;
+    if (['rotate','scale'].includes(tool)) {
+      if(!points.length)points=[p];
+      else if(params.reference){
+        if(params.reference==='points'){params.refPoints.push({...p});if(params.refPoints.length===2){const[a,b]=params.refPoints;if(C.distance(a,b)<=1e-9){params.refPoints.pop();throw Error(tool==='scale'?'Reference length must be positive.':'Reference direction requires distinct points.');}params.referenceValue=tool==='rotate'?Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI:C.distance(a,b);if(tool==='scale'&&params.referenceValue<=1e-9){params.refPoints.pop();throw Error('Reference length must be positive.');}params.reference='target';}}
+        else if(params.reference==='target'){if(C.distance(p,points[0])<=1e-9)throw Error('Reference target must differ from pivot.');const value=tool==='rotate'?Math.atan2(p.y-points[0].y,p.x-points[0].x)*180/Math.PI:C.distance(p,points[0]);transformNumber(tool==='rotate'?value-params.referenceValue:value/params.referenceValue);return;}
+      }else{const value=tool==='rotate'?Math.atan2(p.y-points[0].y,p.x-points[0].x)*180/Math.PI:C.distance(p,points[0]);if(tool==='scale'){throw Error('Enter a scale factor or R for Reference.');}transformNumber(value);return;}
+      prompt();schedule();return;
     }
     if (tool === 'text') {
       points = [p];
@@ -653,7 +656,7 @@
       params.lastDirection=V.sub(points[1],points[0]);
       points = [p];
     } else if (tool === 'rectangle' && points.length === 2) {
-      const [a, b] = points;
+      const [a, raw] = points,b=params.rectWidth?{x:a.x+(raw.x>=a.x?1:-1)*params.rectWidth,y:a.y+(raw.y>=a.y?1:-1)*params.rectHeight}:raw;
       if (Math.abs(a.x - b.x) < 1e-9 || Math.abs(a.y - b.y) < 1e-9) {
         points.pop();
         throw Error('Rectangle requires nonzero width and height.');
@@ -671,18 +674,7 @@
       append(make('circle', [center], {radius: r}));
       setTool('select');
     } else if (tool === 'arc' && points.length === 3) {
-      const [c, a, b] = points, r = C.distance(c, a);
-      if (r < 1e-9) {
-        points.pop();
-        points.pop();
-        throw Error('Arc radius must be positive.');
-      }
-      append(make('arc', [c], {
-        radius: r,
-        startAngle: Math.atan2(a.y - c.y, a.x - c.x),
-        endAngle: Math.atan2(b.y - c.y, b.x - c.x)
-      }));
-      setTool('select');
+      append(arcEntity(points,params.arcMode));setTool('select');
     } else if (tool === 'dimension' && points.length === 3) {
       if (C.distance(points[0], points[1]) < 1e-9) {
         points.pop();
@@ -821,6 +813,51 @@
     download(JSON.stringify(result,null,2),'RasmCAD-'+VERSION+'-diagnostics.json','application/json');
     log('Diagnostics downloaded. Review the file before sharing: recent command text is included.');
   }
+  function showMatchSettings(){
+    const fields=params.matchFields||window.RasmProperties.defaults;
+    advanced.dialog('Match Properties — choose fields',window.RasmProperties.fields.map(key=>({name:key,label:key==='styleName'?'Full dimension style':key,type:'checkbox',value:fields.includes(key)})),values=>{params.matchFields=Object.keys(values).filter(k=>values[k]);log('MATCHPROP fields: '+params.matchFields.join(', '));});
+  }
+  function commandOptions(raw){
+    const input=Commands.normalizeInput(raw).trim(),parts=input.toUpperCase().split(/\s+/),word=parts[0],rest=parts.slice(1);
+    const scalar=Commands.number(input);
+    if(params.acquiring)return false;
+    if(tool==='copy'){
+      if(['S','SINGLE','M','MULTIPLE'].includes(word)&&!rest.length){params.copyMode=['S','SINGLE'].includes(word)?'single':'multiple';prompt();log('COPY '+params.copyMode+'. Array count includes the original object.');return true;}
+      if(['A','ARRAY'].includes(word)){let count=null,fit=false;if(rest.length){if(!/^\d+$/.test(rest[0])||Number(rest[0])<2||Number(rest[0])>10001)throw Error('COPY Array count must be 2..10001 including original.');count=Number(rest[0]);if(rest[1]){if(rest[1]!=='FIT'||rest.length>2)throw Error('COPY Array: count and optional FIT.');fit=true;}}params.copyCount=count;params.copyCountInput=count===null;params.copyFit=fit;prompt();return true;}
+      if(['F','FIT'].includes(word)&&!rest.length){if(!params.copyCount&&!params.copyCountInput)throw Error('Choose ARRAY and count before FIT.');params.copyFit=true;prompt();return true;}
+      if(params.copyCountInput){if(scalar===null||!Number.isInteger(scalar)||scalar<2||scalar>10001)throw Error('COPY Array count must be 2..10001 including original.');params.copyCount=scalar;params.copyCountInput=false;prompt();return true;}
+    }
+    if(['rotate','scale'].includes(tool)){
+      if(['R','REFERENCE'].includes(word)&&!rest.length){if(!points.length)throw Error('Specify pivot/base point before Reference.');params.reference='points';params.refPoints=[];prompt();return true;}
+      if(params.reference&&scalar!==null){if(tool==='scale'&&scalar<=0)throw Error('Reference length must be positive.');if(params.reference==='points'){params.referenceValue=scalar;params.reference='target';prompt();return true;}const value=tool==='rotate'?scalar-params.referenceValue:scalar/params.referenceValue;transformNumber(value);return true;}
+    }
+    if(tool==='mirror'&&['KEEP','DELETE','Y','N'].includes(word)&&!rest.length){params.mirrorKeep=['KEEP','N'].includes(word);prompt();log('MIRROR will '+(params.mirrorKeep?'keep':'delete')+' source objects after a valid mirror.');return true;}
+    if(tool==='arc'&&!points.length&&['3P','CENTER'].includes(word)&&!rest.length){params.arcMode=word==='3P'?'3P':null;prompt();return true;}
+    if(tool==='circle'&&!points.length&&word==='TTR'&&!rest.length){params.circleMode='TTR';params.tangentLines=[];prompt();return true;}
+    if(tool==='circle'&&params.circleMode==='TTR'&&params.tangentLines?.length===2&&scalar!==null){if(scalar<=0)throw Error('TTR radius must be positive.');const[a,b]=params.tangentLines,near=V.mul(V.add(a.pick,b.pick),.5),circle=window.RasmConstruction.circleTTR(a.entity,b.entity,scalar,near);append(make('circle',[circle.center],{radius:circle.radius}));setTool('select');return true;}
+    if(tool==='rectangle'){
+      if(['D','DIMENSIONS'].includes(word)&&!rest.length){if(!points.length)throw Error('Specify first rectangle corner, then Dimensions.');params.rectStage='width';params.rectWidth=null;params.rectHeight=null;prompt();return true;}
+      if(params.rectStage){if(scalar===null||scalar<=0)throw Error('Rectangle '+params.rectStage+' must be positive.');if(params.rectStage==='width'){params.rectWidth=scalar;params.rectStage='height';}else{params.rectHeight=scalar;params.rectStage=null;}prompt();return true;}
+    }
+    if(tool==='move'&&['D','DISPLACEMENT'].includes(word)&&!rest.length){points=[{x:0,y:0}];params.moveDisplacement=true;prompt();log('MOVE: enter displacement as x,y or @dx,dy.');return true;}
+    if(['trim','extend'].includes(tool)){
+      if(word==='EDGE'){if(rest.length>1||rest.length&& !['EXTEND','NONE'].includes(rest[0]))throw Error('EDGE: EXTEND or NONE.');if(rest.length){params.edge=rest[0]==='EXTEND'?'extend':'none';params.edgeInput=false;}else params.edgeInput=true;prompt();log('Boundary edge mode: '+(params.edge||'none'));return true;}
+      if(params.edgeInput){if(!['EXTEND','NONE'].includes(word)||rest.length)throw Error('EDGE: EXTEND or NONE.');params.edge=word==='EXTEND'?'extend':'none';params.edgeInput=false;prompt();return true;}
+    }
+    if(tool==='offset'){
+      if(['T','THROUGH'].includes(word)&&!rest.length){params.offsetThrough=true;params.value=0;prompt();return true;}
+      if(word==='LAYER'){if(!['CURRENT','SOURCE'].includes(rest[0])||rest.length!==1)throw Error('OFFSET LAYER: CURRENT or SOURCE.');params.offsetLayer=rest[0].toLowerCase();prompt();return true;}
+      if(word==='ERASE'){if(!['ON','OFF'].includes(rest[0])||rest.length!==1)throw Error('OFFSET ERASE: ON or OFF.');params.offsetErase=rest[0]==='ON';prompt();return true;}
+    }
+    if(['fillet','chamfer'].includes(tool)&&['TRIM','NOTRIM'].includes(word)&&!rest.length){params.trim=word==='TRIM';prompt();return true;}
+    if(tool==='chamfer'){
+      if(word==='ANGLE'&&!rest.length){params.chamferAngleInput='distance';params.value=null;params.chamferAngle=null;prompt();return true;}
+      if(params.chamferAngleInput){if(scalar===null||(params.chamferAngleInput==='distance'?scalar<=0:scalar<=0||scalar>=180))throw Error('CHAMFER Angle: positive distance, then angle between 0 and180degrees.');if(params.chamferAngleInput==='distance'){params.value=scalar;params.chamferAngleInput='angle';}else{params.chamferAngle=scalar;params.chamferAngleInput=null;}prompt();return true;}
+    }
+    if(tool==='matchprop'&&['S','SETTINGS'].includes(word)&&!rest.length){showMatchSettings();return true;}
+
+    return false;
+  }
   function execute(input, optionOnly=false) {
     input = String(input).trim();
     $('command').value = '';
@@ -829,6 +866,7 @@
       finishCommand();
       return;
     }
+    if(!(tool==='text'&&points.length)&&!advanced?.textInput&&commandOptions(input))return;
     if(!(tool==='text'&&points.length)&&!advanced?.textInput){
       const [word,...words]=Commands.normalizeInput(input).toUpperCase().split(/\s+/),rest=words.join(' ');
       const modes={END:'endpoint',MID:'midpoint',CEN:'center',QUA:'quadrant',INT:'intersection',PER:'perpendicular',TAN:'tangent',NEA:'nearest',NON:'none'};
@@ -839,7 +877,6 @@
       if(word==='TRACK'&&!rest){if(!snapPoint)throw Error('Hover an exact snap point first, then TRACK.');otrack=true;trackingAnchors.push({...snapPoint});if(trackingAnchors.length>4)trackingAnchors.shift();log('Object tracking point acquired.');return;}
       if(word==='FROM'&&!rest){if(tool==='select'&&!advanced?.active)throw Error('Start a drawing/edit point prompt first.');awaitFrom=true;fromBase=null;log('FROM: pick temporary base, then enter @dx,dy or @distance<angle.');return;}
       if(repeating()&&['U','UNDO'].includes(word)&&!rest){undoRepeated();return;}
-      if(tool==='copy'&&['M','MULTIPLE'].includes(word)&&!rest){log('COPY uses Multiple mode. Pick base/destinations; U undo; Enter/Esc finish.');return;}
     }
     if(advanced?.active||/^(STRETCH|BREAK|LENGTHEN|ALIGN|PEDIT|SPLINEDIT|SPLINE|OVERKILL|EXPLODE|EXPLOAD|HATCH|HATCHEDIT|BOUNDARY|REGION|BLOCK|INSERT|WBLOCK|BEDIT|REFEDIT|BCLOSE|ATTDEF|ATTEDIT|ATTSYNC|DIMSTYLE|DIMCONTINUE|DIMBASELINE|DIMORDINATE|DIMEDIT|QLEADER|MLEADER|MLEADEREDIT|OSNAPSET)(?:\s|$)/i.test(input)){if(advanced.execute(input))return;}
     if(params.acquiring){const p=parsePoint(input);if(p){acceptPoint(p);return;}if(['ALL','A'].includes(input.toUpperCase())){selected=new Set(doc.entities.filter(editable).map(e=>e.id));sync();return;}throw Error('Select objects, then press Enter. Esc cancels.');}
@@ -1021,7 +1058,7 @@
       E: erase,
       ERASE: erase,
       SAVE: save,
-      SAVEAS: save,
+      SAVEAS: () => saveUI.show(),
       QSAVE: save,
       OPEN: () => openPicker(),
       IMPORT: () => openPicker(),
@@ -1059,6 +1096,7 @@
             'Unsaved changes. Cancel and Save project to keep them, or OK to discard them.');
   }
   function setDocument(next, name, saved) {
+    saveUI?.reset?.();
     const layerRecovery=IO.ensureWritableLayer(next);
     // Replacing a document must not finish an old PLINE into the new document.
     // Clear the old construction state before setTool can inspect it.
@@ -1101,7 +1139,9 @@
     setTimeout(() => URL.revokeObjectURL(url), 20000);
     downloadSerial++;
   }
-  function save() {
+  async function save() {
+    if(saveUI?.saving){log('A save is already in progress. Wait for it to finish.');return;}
+    if(saveUI?.hasFileHandle){await saveUI.saveCurrent();return;}
     const data = doc.serialize();
     download(data, filename + '.rasm.json', 'application/json;charset=utf-8');
     dirty = false;
@@ -1256,19 +1296,21 @@
     }
   }
   function preview() {
+    if(plotWindowPick){if(plotWindowPick.points.length&&mouse){const a=plotWindowPick.points[0],p=screenToWorld(mouse);drawEntity(make('polyline',[a,{x:p.x,y:a.y},p,{x:a.x,y:p.y}],{closed:true}),accent);}return;}
     if(advanced?.active){for(const e of advanced.preview())drawEntity(e,accent);return;}
     if (!points.length||params.acquiring) return;
     const p = mouse ? constrained(mouse) : points.at(-1);
     let e;
     if (tool === 'line' || tool === 'polyline') e = make('polyline', [...points, p]);
     if (tool === 'rectangle') {
-      const a = points[0];
-      e = make('polyline', [a, {x: p.x, y: a.y}, p, {x: a.x, y: p.y}], {closed: true});
+      const a=points[0],q=params.rectWidth&&params.rectHeight?{x:a.x+(p.x>=a.x?1:-1)*params.rectWidth,y:a.y+(p.y>=a.y?1:-1)*params.rectHeight}:p;
+      e=make('polyline',[a,{x:q.x,y:a.y},q,{x:a.x,y:q.y}],{closed:true});
     }
     if (tool === 'circle'&&!params.circleMode) e = make('circle', [points[0]], {radius: C.distance(points[0], p)});
     if(tool==='circle'&&params.circleMode==='2P')e=make('circle',[V.mul(V.add(points[0],p),.5)],{radius:C.distance(points[0],p)/2});
     if(tool==='circle'&&params.circleMode==='3P'){if(points.length===1)line(points[0],p,accent,1,[4,4]);else{try{const circle=Commands.circleThrough3Points(...points,p);e=make('circle',[circle.center],{radius:circle.radius});}catch(_){/* Collinear preview has no circle. */}}}
-    if (tool === 'arc') {
+    if(tool==='arc'&&params.arcMode==='3P'){if(points.length===1)line(points[0],p,accent,1,[4,4]);else{try{e=arcEntity([...points,p],'3P');}catch(_){}}}
+    if (tool === 'arc'&&params.arcMode!=='3P') {
       const c = points[0], a = points[1] || p;
       e = make('arc', [c], {
         radius: C.distance(c, a),
@@ -1284,12 +1326,12 @@
     if(['dimradius','dimdiameter'].includes(tool)&&params.circle){const c=params.circle.points[0],length=C.distance(c,p);if(length>1e-9)e=make('dimension',[c,V.add(c,V.mul(V.sub(p,c),params.circle.radius/length)),p],{...defaultDimensionStyle(),dimensionStyle:tool==='dimradius'?'radius':'diameter'});}
     if (tool === 'text') text(points[0], 'Enter text...', 12, accent);
     if (tool === 'move' || tool === 'copy') {
-      const delta = V.sub(p, points[0]);
-      for (const item of doc.entities)
-        if (selected.has(item.id) && editable(item)) {
-          drawEntity({...item, points: item.points.map(q => V.add(q, delta))}, accent);
-        }
-      line(points[0], p, accent, 1, [4, 4]);
+      const delta=V.sub(p,points[0]),sourceIds=new Set(tool==='copy'?params.copySource||selected:selected),copies=tool==='copy'?(params.copyCount||2)-1:1;
+      // Bound preview work only; the committed array retains every requested item.
+      const indexes=copies<=50?Array.from({length:copies},(_,i)=>i+1):[1,copies];
+      for(const i of indexes){const factor=tool==='copy'&&params.copyFit?i/((params.copyCount||2)-1):i,dx=delta.x*factor,dy=delta.y*factor;for(const item of doc.entities)if(sourceIds.has(item.id)&&editable(item))drawEntity(window.RasmBlocks.transformEntity(item,[1,0,0,1,dx,dy]),accent);}
+      if(copies>50){ctx.fillStyle=accent;ctx.font='12px sans-serif';ctx.fillText('Array preview: first and last of '+copies+' copies',12,22);}
+      line(points[0],p,accent,1,[4,4]);
     }
     if (e) drawEntity(e, accent);
     for (const p of points) {
@@ -1481,6 +1523,7 @@
   bind('new-btn', newDrawing);
   bind('open-btn', openPicker);
   bind('save-btn', save);
+  if($('save-as-btn'))bind('save-as-btn',()=>saveUI.show());
   bind('example-btn', example);
   bind('dxf-btn', exportDxf);
   bind('png-btn', exportPng);
@@ -1573,7 +1616,7 @@
                                   e.target instanceof HTMLTextAreaElement;
                               const cmd = e.target === $('command');
                               const empty = cmd && !$('command').value;
-                              if(document.querySelector('.advanced-dialog[open],#plot-dialog[open]'))return;
+                              if(document.querySelector('.advanced-dialog[open],#plot-dialog[open],#save-dialog[open]'))return;
                               if ($('help-dialog').open || $('import-report').open) {
                                 if (e.key === 'Escape') {
                                   if ($('help-dialog').open) $('help-dialog').close();
@@ -1689,9 +1732,13 @@
     selectAll:()=>{selected=new Set(doc.entities.filter(editable).map(e=>e.id));prompt();sync();},
     replaceDocument:(next,name)=>setDocument(next,name,false)
   });
+  saveUI=window.RasmSaveUI.mount({getDocument:()=>doc,getFilename:()=>filename,download,log,onNativeSaved:name=>{filename=name;dirty=false;sync();}});
   plotUI=window.RasmPlotUI.mount({getDocument:()=>doc,download,log,
+    getSelectionIds:()=>[...selected],
+    getDisplayBounds:()=>({valid:true,min:screenToWorld({x:0,y:H}),max:screenToWorld({x:W,y:0})}),
+    pickWindow:callback=>{setTool('id');plotWindowPick={callback,points:[]};log('PLOT: pick first window corner.');},
     getSelectionBounds:()=>{const b={valid:false,min:{x:0,y:0},max:{x:0,y:0}};for(const e of doc.entities)if(selected.has(e.id)){const q=C.entityBounds(e);if(q.valid){if(!b.valid){b.min={...q.min};b.max={...q.max};b.valid=true;}else{b.min.x=Math.min(b.min.x,q.min.x);b.min.y=Math.min(b.min.y,q.min.y);b.max.x=Math.max(b.max.x,q.max.x);b.max.y=Math.max(b.max.y,q.max.y);}}}return b.valid?b:null;},
-    setPlotSettings:settings=>{doc.checkpoint();doc.resources.plot=settings;changed();}
+    setPlotSettings:settings=>{const saved={...settings};if(!['selection','selectedBounds'].includes(saved.area))delete saved.selectedIds;if(saved.area!=='display')delete saved.displayBounds;if(JSON.stringify(doc.resources.plot)===JSON.stringify(saved))return;doc.checkpoint();doc.resources.plot=saved;changed();}
   });
   updateLayers();
   resize();

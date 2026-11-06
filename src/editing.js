@@ -100,10 +100,13 @@
     if(p.kind==='circular'){out.kind='arc';out.startAngle=p.start+start/e.radius;out.endAngle=p.start+end/e.radius;out.closed=false;return out;}
     const points=[p.at(start)];for(const b of p.breaks)if(b>start+EPS&&b<end-EPS)points.push(p.at(b));points.push(p.at(end));out.points=points;out.closed=false;out.kind=e.kind==='line'?'line':'polyline';return out;
   }
-  function trim(doc,targetId,pickPoint,boundaryIds=[]) {
+  function edgeOptions(options){check(options&&typeof options==='object'&&!Array.isArray(options),'Invalid editing options');for(const key of Object.keys(options))check(key==='edge','Unsupported boundary option: '+key);check(options.edge===undefined||['none','extend'].includes(options.edge),'Edge must be none or extend');return options.edge==='extend';}
+  function extendedBoundary(e,extended){return extended&&e.kind==='arc'?{...e,kind:'circle'}:e;}
+  function trim(doc,targetId,pickPoint,boundaryIds=[],options={}) {
+    const extended=edgeOptions(options);
     point(pickPoint);return transaction(doc,w=>{
       const e=entity(w,targetId),p=path(e);check(p.length>EPS,'Cannot trim a degenerate entity');
-      const cuts=[];for(const boundary of cutters(w,targetId,boundaryIds))for(const hit of intersections(e,boundary)){const s=p.nearest(hit);if(p.closed||s>EPS&&s<p.length-EPS)cuts.push(s);}
+      const cuts=[];for(const boundary of cutters(w,targetId,boundaryIds))for(const hit of intersections(e,extendedBoundary(boundary,extended),{infiniteB:extended})){const s=p.nearest(hit);if(p.closed||s>EPS&&s<p.length-EPS)cuts.push(s);}
       const sorted=[...cuts].sort((a,b)=>a-b).filter((s,i,arr)=>i===0||s-arr[i-1]>EPS);
       if(p.closed&&sorted.length>1&&p.length-sorted[sorted.length-1]+sorted[0]<=EPS)sorted.pop();
       check(sorted.length>=(p.closed?2:1),'No usable boundary intersections for trimming');const pick=p.nearest(pickPoint),parts=[];
@@ -116,43 +119,49 @@
       return replace(w,targetId,parts);
     });
   }
-  function extend(doc,targetId,pickPoint,boundaryIds=[]) {
+  function extend(doc,targetId,pickPoint,boundaryIds=[],options={}) {
+    const extended=edgeOptions(options);
     point(pickPoint);return transaction(doc,w=>{
       const e=entity(w,targetId),boundaries=cutters(w,targetId,boundaryIds),out=clone(e);
       if(e.kind==='line'||e.kind==='polyline'){
         check(!e.closed,'A closed polyline has no endpoint to extend');const p=e.points,n=p.length,index=distance(pickPoint,p[0])<=distance(pickPoint,p[n-1])?0:n-1,inner=index===0?1:n-2;
         const direction=unit(sub(p[index],p[inner])),line={kind:'line',points:[p[inner],p[index]]};let best=Infinity,hit=null;
-        for(const b of boundaries)for(const q of intersections(line,b,{infiniteA:true})){const t=dot(sub(q,p[index]),direction);if(t>tol(q,p[index])&&t<best){best=t;hit=q;}}
+        for(const b of boundaries)for(const q of intersections(line,extendedBoundary(b,extended),{infiniteA:true,infiniteB:extended})){const t=dot(sub(q,p[index]),direction);if(t>tol(q,p[index])&&t<best){best=t;hit=q;}}
         check(hit,'No boundary intersects the forward extension of this endpoint');out.points[index]=hit;
       } else if(e.kind==='arc') {
         const total=span(e);check(total<TAU-EPS,'A full circle has no endpoint to extend');const center=e.points[0],at=a=>add(center,{x:e.radius*Math.cos(a),y:e.radius*Math.sin(a)}),start=at(e.startAngle),end=at(e.endAngle),atStart=distance(pickPoint,start)<=distance(pickPoint,end),circle={...e,kind:'circle'};let best=Infinity,angleHit=0;
-        for(const b of boundaries)for(const q of intersections(circle,b)){const a=Math.atan2(q.y-center.y,q.x-center.x),delta=atStart?modulo(e.startAngle-a):modulo(a-e.endAngle);if(delta>EPS&&delta<TAU-total-EPS&&delta<best){best=delta;angleHit=a;}}
+        for(const b of boundaries)for(const q of intersections(circle,extendedBoundary(b,extended),{infiniteB:extended})){const a=Math.atan2(q.y-center.y,q.x-center.x),delta=atStart?modulo(e.startAngle-a):modulo(a-e.endAngle);if(delta>EPS&&delta<TAU-total-EPS&&delta<best){best=delta;angleHit=a;}}
         check(Number.isFinite(best),'No boundary intersects the available circular extension');if(atStart)out.startAngle=e.startAngle-best;else out.endAngle=e.endAngle+best;
       } else fail('Extend supports lines, open polylines and arcs');
       return replace(w,targetId,[out]);
     });
   }
-  function offset(doc,ids,amount,sidePoint){finite(amount,'offset distance');point(sidePoint);check(amount>EPS,'Offset distance must be positive');return transaction(doc,w=>{
+  function offset(doc,ids,amount,sidePoint,options={}){point(sidePoint);check(options&&typeof options==='object'&&!Array.isArray(options),'Invalid offset options');for(const key of Object.keys(options))check(['through','layer','eraseSource'].includes(key),'Unsupported offset option: '+key);check(options.layer===undefined||['source','current'].includes(options.layer),'Offset layer must be source or current');if(options.through!==undefined)check(typeof options.through==='boolean','Through option must be boolean');if(options.eraseSource!==undefined)check(typeof options.eraseSource==='boolean','Erase source option must be boolean');if(!options.through){finite(amount,'offset distance');check(amount>EPS,'Offset distance must be positive');}return transaction(doc,w=>{
     const outputs=[];for(const source of chosenEntities(w,ids)){const e=clone(source);e.id=0;
-      if(e.kind==='circle'||e.kind==='arc'){const sign=distance(sidePoint,e.points[0])>=e.radius?1:-1;e.radius+=sign*amount;check(e.radius>EPS,'Offset would create a nonpositive radius');}
+      let step=amount;
+      if(options.layer==='current'){const layer=w.layer(w.currentLayer);check(layer&&layer.visible&&!layer.locked,'Current offset layer is hidden or locked');e.layer=w.currentLayer;}
+      if(options.through){if(e.kind==='circle'||e.kind==='arc')step=Math.abs(distance(sidePoint,e.points[0])-e.radius);else if(e.kind==='line'||e.kind==='polyline'){let best=Infinity;for(const segment of primitives(e)){const u=unit(sub(segment.b,segment.a)),along=Math.max(0,Math.min(distance(segment.a,segment.b),dot(sub(sidePoint,segment.a),u))),d=distance(sidePoint,add(segment.a,mul(u,along)));if(d<best){best=d;step=Math.abs(cross(u,sub(sidePoint,segment.a)));}}}else fail('Offset supports lines, polylines, circles and arcs');check(step>EPS,'Through point lies on the source; choose a nonzero offset');}
+      if(e.kind==='circle'||e.kind==='arc'){const sign=distance(sidePoint,e.points[0])>=e.radius?1:-1;e.radius+=sign*step;check(e.radius>EPS,'Offset would create a nonpositive radius');}
       else if(e.kind==='line'||e.kind==='polyline'){
         const p=e.points,n=p.length,count=e.closed?n:n-1,segments=[];let closest=Infinity,side=1;
         for(let i=0;i<count;i++){const a=p[i],b=p[(i+1)%n],u=unit(sub(b,a)),normal={x:-u.y,y:u.x};const t=Math.max(0,Math.min(distance(a,b),dot(sub(sidePoint,a),u)));const d=distance(sidePoint,add(a,mul(u,t)));if(d<closest){closest=d;side=cross(u,sub(sidePoint,a))>=0?1:-1;}segments.push({a,b,u,normal});}
-        const shifted=segments.map(s=>({a:add(s.a,mul(s.normal,amount*side)),b:add(s.b,mul(s.normal,amount*side))}));const q=[];
-        for(let i=0;i<n;i++){if(!e.closed&&i===0){q.push(shifted[0].a);continue;}if(!e.closed&&i===n-1){q.push(shifted[count-1].b);continue;}const a=shifted[(i-1+count)%count],b=shifted[i%count],hits=lineLine(a,b,true,true);const hit=hits[0]||b.a;check(distance(hit,p[i])<=amount*1000,'Offset miter is too long');q.push(hit);}
+        const shifted=segments.map(s=>({a:add(s.a,mul(s.normal,step*side)),b:add(s.b,mul(s.normal,step*side))}));const q=[];
+        for(let i=0;i<n;i++){if(!e.closed&&i===0){q.push(shifted[0].a);continue;}if(!e.closed&&i===n-1){q.push(shifted[count-1].b);continue;}const a=shifted[(i-1+count)%count],b=shifted[i%count],hits=lineLine(a,b,true,true);const hit=hits[0]||b.a;check(distance(hit,p[i])<=step*1000,'Offset miter is too long');q.push(hit);}
         for(let i=0;i<count;i++)for(let j=i+2;j<count;j++){if(e.closed&&i===0&&j===count-1)continue;check(!lineLine({a:q[i],b:q[(i+1)%n]},{a:q[j],b:q[(j+1)%n]},false,false).length,'Offset would self-intersect');}
         check(q.every((a,i)=>i===0||distance(a,q[i-1])>EPS),'Offset collapsed a segment');
-        if(e.closed){const original=p.reduce((s,a,i)=>s+cross(a,p[(i+1)%n]),0),shift=q.reduce((s,a,i)=>s+cross(a,q[(i+1)%n]),0);check(original*shift>0,'Offset collapsed or inverted the polygon');for(let i=0;i<n;i++)check(dot(sub(q[(i+1)%n],q[i]),sub(p[(i+1)%n],p[i]))>EPS,'Offset exceeds the polygon interior');}
+        if(e.closed){const signed=points=>points.reduce((s,a,i)=>s+cross(sub(a,points[0]),sub(points[(i+1)%n],points[0])),0),original=signed(p),shift=signed(q);check(original*shift>0,'Offset collapsed or inverted the polygon');for(let i=0;i<n;i++){const previous=sub(p[(i+1)%n],p[i]),next=sub(q[(i+1)%n],q[i]);check(dot(next,previous)>tol(q[i],p[i])*norm(previous),'Offset exceeds the polygon interior');}}
         e.points=q;
       }else fail('Offset supports lines, polylines, circles and arcs');outputs.push(w.add(e));
-    }return outputs;
+    }if(options.eraseSource)w.erase([...new Set(ids)]);return outputs;
   });}
   function corner(w,id1,id2,pick1,pick2){check(id1!==id2,'Select two different lines');const a=entity(w,id1),b=entity(w,id2);check(a.kind==='line'&&b.kind==='line','Fillet/chamfer currently support two LINE entities');const hit=lineLine({a:a.points[0],b:a.points[1]},{a:b.points[0],b:b.points[1]},true,true)[0];check(hit,'Lines must intersect at a unique corner');
     function ray(e,pick){let far=e.points.reduce((v,p)=>distance(p,hit)>distance(v,hit)?p:v,e.points[0]);let u=unit(sub(far,hit));if(pick&&Math.abs(dot(sub(pick,hit),u))>EPS&&dot(sub(pick,hit),u)<0)u=mul(u,-1);const candidates=e.points.filter(p=>dot(sub(p,hit),u)>EPS);check(candidates.length,'Pick the side of the line to keep');far=candidates.reduce((v,p)=>dot(sub(p,hit),u)>dot(sub(v,hit),u)?p:v);return{u,far,length:distance(hit,far)};}
     const ra=ray(a,pick1),rb=ray(b,pick2),theta=Math.acos(Math.max(-1,Math.min(1,dot(ra.u,rb.u))));check(theta>EPS&&theta<PI-EPS,'Lines must form a nonzero corner');return{a,b,hit,ra,rb,theta};
   }
-  function fillet(doc,id1,id2,radius,pick1,pick2){finite(radius,'fillet radius');check(radius>=0,'Fillet radius cannot be negative');return transaction(doc,w=>{const g=corner(w,id1,id2,pick1,pick2),t=radius/Math.tan(g.theta/2);check(t<g.ra.length-EPS&&t<g.rb.length-EPS,'Fillet radius is too large for the retained line segments');const pa=add(g.hit,mul(g.ra.u,t)),pb=add(g.hit,mul(g.rb.u,t));g.a.points=[g.ra.far,pa];g.b.points=[g.rb.far,pb];const ids=[id1,id2];if(radius>EPS){const center=add(g.hit,mul(unit(add(g.ra.u,g.rb.u)),radius/Math.sin(g.theta/2)));let start=Math.atan2(pa.y-center.y,pa.x-center.x),end=Math.atan2(pb.y-center.y,pb.x-center.x);if(modulo(end-start)>PI)[start,end]=[end,start];ids.push(w.add({...clone(g.a),id:0,kind:'arc',points:[center],radius,startAngle:start,endAngle:end,closed:false}));}return ids;});}
-  function chamfer(doc,id1,id2,d1,d2,pick1,pick2){finite(d1,'first chamfer distance');finite(d2,'second chamfer distance');check(d1>=0&&d2>=0&&d1+d2>EPS,'Chamfer distances must be nonnegative and not both zero');return transaction(doc,w=>{const g=corner(w,id1,id2,pick1,pick2);check(d1<g.ra.length-EPS&&d2<g.rb.length-EPS,'Chamfer distance exceeds the retained segment');const pa=add(g.hit,mul(g.ra.u,d1)),pb=add(g.hit,mul(g.rb.u,d2));g.a.points=[g.ra.far,pa];g.b.points=[g.rb.far,pb];return[id1,id2,w.add({...clone(g.a),id:0,kind:'line',points:[pa,pb],closed:false})];});}
+  function cornerOptions(options){check(options&&typeof options==='object'&&!Array.isArray(options),'Invalid corner options');for(const key of Object.keys(options))check(key==='trim','Unsupported corner option: '+key);check(options.trim===undefined||typeof options.trim==='boolean','Trim option must be boolean');return options.trim!==false;}
+  function fillet(doc,id1,id2,radius,pick1,pick2,options={}){const shouldTrim=cornerOptions(options);finite(radius,'fillet radius');check(radius>=0,'Fillet radius cannot be negative');return transaction(doc,w=>{const g=corner(w,id1,id2,pick1,pick2),t=radius/Math.tan(g.theta/2);check(t<g.ra.length-EPS&&t<g.rb.length-EPS,'Fillet radius is too large for the retained line segments');const pa=add(g.hit,mul(g.ra.u,t)),pb=add(g.hit,mul(g.rb.u,t));if(shouldTrim){g.a.points=[g.ra.far,pa];g.b.points=[g.rb.far,pb];}const ids=[id1,id2];if(radius>EPS){const center=add(g.hit,mul(unit(add(g.ra.u,g.rb.u)),radius/Math.sin(g.theta/2)));let start=Math.atan2(pa.y-center.y,pa.x-center.x),end=Math.atan2(pb.y-center.y,pb.x-center.x);if(modulo(end-start)>PI)[start,end]=[end,start];ids.push(w.add({...clone(g.a),id:0,kind:'arc',points:[center],radius,startAngle:start,endAngle:end,closed:false}));}return ids;});}
+  function chamfer(doc,id1,id2,d1,d2,pick1,pick2,options={}){const shouldTrim=cornerOptions(options);finite(d1,'first chamfer distance');finite(d2,'second chamfer distance');check(d1>=0&&d2>=0&&d1+d2>EPS,'Chamfer distances must be nonnegative and not both zero');return transaction(doc,w=>{const g=corner(w,id1,id2,pick1,pick2);check(d1<g.ra.length-EPS&&d2<g.rb.length-EPS,'Chamfer distance exceeds the retained segment');const pa=add(g.hit,mul(g.ra.u,d1)),pb=add(g.hit,mul(g.rb.u,d2));if(shouldTrim){g.a.points=[g.ra.far,pa];g.b.points=[g.rb.far,pb];}return[id1,id2,w.add({...clone(g.a),id:0,kind:'line',points:[pa,pb],closed:false})];});}
+  function chamferAngle(doc,id1,id2,amount,angleDegrees,pick1,pick2,options={}){finite(amount,'chamfer distance');finite(angleDegrees,'chamfer angle');check(amount>EPS,'Chamfer distance must be positive');const g=corner(doc,id1,id2,pick1,pick2),angle=angleDegrees*PI/180;check(angle>EPS&&angle<PI-g.theta-EPS,'Chamfer angle must lie inside the retained corner');const second=amount*Math.sin(angle)/Math.sin(g.theta+angle);return chamfer(doc,id1,id2,amount,second,pick1,pick2,options);}
   function mirror(doc,ids,a,b,copy=false){
     point(a);point(b);const u=unit(sub(b,a)),angle=Math.atan2(u.y,u.x);
     const reflect=p=>{const d=sub(p,a);return add(a,sub(mul(u,2*dot(d,u)),d));};
@@ -176,5 +185,5 @@
   function join(doc,ids,tolerance=1e-6){finite(tolerance,'join tolerance');check(tolerance>0,'Join tolerance must be positive');return transaction(doc,w=>{const list=chosenEntities(w,ids);check(list.length>=2,'Select at least two open lines/polylines');check(list.every(e=>(e.kind==='line'||e.kind==='polyline')&&!e.closed),'Join supports open lines and polylines');check(list.every(e=>e.layer===list[0].layer),'Joined objects must use the same layer');let chain=clone(list[0].points),remaining=list.slice(1);while(remaining.length){let matched=false;for(let i=0;i<remaining.length;i++){let p=clone(remaining[i].points);if(distance(chain.at(-1),p[0])<=tolerance)chain.push(...p.slice(1));else if(distance(chain.at(-1),p.at(-1))<=tolerance){p.reverse();chain.push(...p.slice(1));}else if(distance(chain[0],p.at(-1))<=tolerance)chain.unshift(...p.slice(0,-1));else if(distance(chain[0],p[0])<=tolerance){p.reverse();chain.unshift(...p.slice(0,-1));}else continue;remaining.splice(i,1);matched=true;break;}check(matched,'Selected objects do not form one connected chain');}const closed=distance(chain[0],chain.at(-1))<=tolerance;if(closed)chain.pop();const result={...clone(list[0]),kind:'polyline',points:chain,closed};w.erase(list.slice(1).map(e=>e.id));return replace(w,list[0].id,[result]);});}
   function area(e){if(e.kind==='circle')return{area:PI*e.radius**2,signedArea:PI*e.radius**2,perimeter:TAU*e.radius};check(e.kind==='polyline'&&e.closed,'Area requires a circle or closed polyline');let sum=0,perimeter=0;for(let i=0;i<e.points.length;i++){sum+=cross(sub(e.points[i],e.points[0]),sub(e.points[(i+1)%e.points.length],e.points[0]));perimeter+=distance(e.points[i],e.points[(i+1)%e.points.length]);}return{area:Math.abs(sum)/2,signedArea:sum/2,perimeter};}
   function angle(a,vertex,b){point(a);point(vertex);point(b);const u=unit(sub(a,vertex)),v=unit(sub(b,vertex));return Math.acos(Math.max(-1,Math.min(1,dot(u,v))))*180/PI;}
-  return Object.freeze({trim,extend,offset,fillet,chamfer,mirror,rectangularArray,polarArray,explode,join,area,angle,distance,intersections});
+  return Object.freeze({trim,extend,offset,fillet,chamfer,chamferAngle,mirror,rectangularArray,polarArray,explode,join,area,angle,distance,intersections});
 });

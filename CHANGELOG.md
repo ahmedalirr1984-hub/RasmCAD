@@ -1,5 +1,19 @@
 # Changes
 
+## 0.8-dev — command depth preview
+
+- Deeper COPY,Reference ROTATE/SCALE,MIRROR,ARC3P,CIRCLETTR,RectangleDimensions,
+  MOVEdisplacement,Trim/ExtendEdge,OffsetThrough/layer/erase,Fillet/ChamferNoTrim,
+  ChamferAngle andselective repeatedMATCHPROP.
+- Named dimension style copy/presets,all renderedfields and repeatedauto chains.
+- Actual vector plotpreview,mousewindow,Display,selectionvsselectedbounds,
+  browserprinterinvocation andPDF.
+- SaveAs native/DXFversion choices,filehandle reuse whereavailable,writefailure
+  dirty-state protection. GenuineDWGwrite notavailable;no fakeDWGfiles.
+- Professional grouped workspace and20workflow reference;precision/Undo fixes.
+- See docs/DEPTH-RESULTS.md for exactfinalverification andremaininglimits.
+
+
 ## 0.7 — 2026-11-06: advanced 2D systems
 
 Added analytic intersection/perpendicular/tangent/nearest snaps; STRETCH, BREAK, LENGTHEN, ALIGN, PEDIT, editable interpolating splines/SPLINEDIT, OVERKILL and compound EXPLODE; persistent hatches/regions with holes and boundary tracing; reusable blocks, isolated definition editing, attributes and native WBLOCK; named dimension styles, continue/baseline/ordinate/edit and multiarm leaders; paper/unit/window/scale-controlled vector PDF with embedded licensed font. New compounds, resources and fill primitives persist through Undo and native save/reopen. Compound transformations preserve editable metadata; SOLID/TRACE imports retain fill. See UPGRADE_0.7.md and TEST_RESULTS.md for limits and verification.

@@ -13,6 +13,7 @@
   const LIMIT=1e12,EPS=1e-10,MAX_STYLES=1024,MAX_PATHS=256,MAX_PATH_POINTS=4096;
   const FIELDS=Object.freeze(['textHeight','dimensionScale','arrowSize','extensionOffset','extensionExtend','textGap','precision','prefix','suffix','textColor','dimensionColor','arrowStyle','color','lineWidth']);
   const DEFAULTS=Object.freeze({textHeight:2.5,dimensionScale:1,arrowSize:2.5,extensionOffset:.625,extensionExtend:1.25,textGap:.625,precision:2,prefix:'',suffix:'',textColor:null,dimensionColor:null,arrowStyle:'closed',color:null,lineWidth:1});
+  const PRESETS=Object.freeze({METRIC:Object.freeze({...DEFAULTS}),LARGE_TEXT:Object.freeze({...DEFAULTS,textHeight:5,arrowSize:3.5,textGap:1.25}),COMPACT:Object.freeze({...DEFAULTS,textHeight:1.8,arrowSize:1.8,textGap:.45,extensionOffset:.45,extensionExtend:.9})});
   const copy=value=>JSON.parse(JSON.stringify(value));
   const own=(o,key)=>Object.prototype.hasOwnProperty.call(o,key);
   const add=(a,b)=>({x:a.x+b.x,y:a.y+b.y}),sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}),mul=(p,k)=>({x:p.x*k,y:p.y*k});
@@ -74,10 +75,21 @@
   function style(doc,action,value,options={}){
     action=String(action||'LIST').toUpperCase();
     check(options&&typeof options==='object'&&!Array.isArray(options),'Invalid style options');
+    if(action==='PRESETS')return Object.entries(PRESETS).map(([name,values])=>({name,...values}));
     if(action==='LIST')return Object.keys(table(doc)).sort((a,b)=>a.localeCompare(b)).map(key=>({name:key,...normalizedStyle(table(doc)[key]),current:doc.resources?.currentDimStyle===key}));
     if(action==='GET'){const key=keyFor(doc,value);check(key,'Dimension style does not exist: '+value);return{name:key,...normalizedStyle(table(doc)[key])};}
     return transaction(doc,w=>{
       const r=resources(w),styles=r.dimStyles,found=keyFor(w,value),requested=name(value);
+      if(action==='COPY'||action==='PRESET'){
+        for(const option of Object.keys(options))check(['newName','overwrite','setCurrent'].includes(option),'Unsupported dimension style option: '+option);
+        let source;if(action==='COPY'){check(found,'Dimension style does not exist: '+requested);source=styles[found];}
+        else{source=PRESETS[requested.toUpperCase()];check(source,'Unknown visual preset: '+requested);}
+        const target=name(options.newName||requested),existing=keyFor(w,target);check(!existing||options.overwrite,'Dimension style already exists: '+target);
+        if(!existing)check(Object.keys(styles).length<MAX_STYLES,'Dimension style limit reached');
+        const key=existing||target,next=normalizedStyle(source);Object.defineProperty(styles,key,{value:next,enumerable:true,writable:true,configurable:true});
+        const updatedIds=[];if(existing)for(const e of w.entities)if(e.kind==='dimension'&&e.styleName===key){Object.assign(e,next);C.validateEntity(e);updatedIds.push(e.id);}
+        if(options.setCurrent||!r.currentDimStyle)r.currentDimStyle=key;return{name:key,created:!existing,updatedIds};
+      }
       if(action==='SAVE'||action==='NEW'||action==='UPDATE'){
         if(action==='UPDATE')check(found,'Dimension style does not exist: '+requested);
         if(action!=='UPDATE'&&found&&!options.overwrite)throw Error('Dimension style already exists: '+found);
@@ -115,11 +127,12 @@
         for(const id of ids){const e=editable(w,id,'dimension');Object.assign(e,normalizedStyle(styles[found]),{styleName:found});C.validateEntity(e);}
         return ids;
       }
-      throw Error('Unknown DIMSTYLE action. Use SAVE, UPDATE, SETCURRENT, APPLY, RENAME, DELETE or LIST.');
+      throw Error('Unknown DIMSTYLE action. Use SAVE, UPDATE, COPY, PRESET, PRESETS, SETCURRENT, APPLY, RENAME, DELETE or LIST.');
     });
   }
   function continueDimension(doc,referenceId,feature,placement,options={}){
     feature=point(feature,'feature point');if(placement!=null)placement=point(placement,'dimension placement');
+    if(options.baselineSpacing!=null)check(typeof options.baselineSpacing==='number'&&Number.isFinite(options.baselineSpacing)&&options.baselineSpacing>=0&&options.baselineSpacing<=LIMIT,'Baseline spacing must be a finite, nonnegative drawing distance');
     return transaction(doc,w=>{
       const reference=editable(w,referenceId,'dimension');
       check(['aligned','horizontal','vertical'].includes(reference.dimensionStyle),'Continue/baseline needs an aligned, horizontal or vertical reference dimension');
@@ -128,10 +141,10 @@
       if(!values.styleName&&reference.styleName)values.styleName=reference.styleName;
       let location=placement;
       if(!location){
-        const shift=baseline?values.textHeight*values.dimensionScale*2:0;
-        if(reference.dimensionStyle==='horizontal')location={x:feature.x,y:reference.points[2].y+shift};
-        else if(reference.dimensionStyle==='vertical')location={x:reference.points[2].x+shift,y:feature.y};
-        else{const u=sub(reference.points[1],reference.points[0]),length=norm(u);check(length>EPS,'Invalid reference dimension');const n={x:-u.y/length,y:u.x/length},offset=dot(sub(reference.points[2],reference.points[0]),n)+shift;location=add(start,mul(n,offset));}
+        const shift=baseline?(options.baselineSpacing??values.textHeight*values.dimensionScale*2):0;
+        if(reference.dimensionStyle==='horizontal'){const offset=reference.points[2].y-reference.points[0].y;location={x:feature.x,y:reference.points[2].y+(Math.sign(offset)||1)*shift};}
+        else if(reference.dimensionStyle==='vertical'){const offset=reference.points[2].x-reference.points[0].x;location={x:reference.points[2].x+(Math.sign(offset)||1)*shift,y:feature.y};}
+        else{const u=sub(reference.points[1],reference.points[0]),length=norm(u);check(length>EPS,'Invalid reference dimension');const n={x:-u.y/length,y:u.x/length},previous=dot(sub(reference.points[2],reference.points[0]),n),offset=previous+(Math.sign(previous)||1)*shift;location=add(start,mul(n,offset));}
       }
       const entity={kind:'dimension',points:[start,feature,location],dimensionStyle:reference.dimensionStyle,...values,layer:writableLayer(w,options.layer)};
       return[w.add(entity)];
