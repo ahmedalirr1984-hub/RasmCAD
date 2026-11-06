@@ -109,6 +109,7 @@ async function test(context,dpr,name,fn) {
       s=await state(page);assert.equal(s.acquiring,false,'selection Enter must advance exactly one command stage');assert.equal(s.tool,edit.toLowerCase());
       if(edit==='MIRROR'){await command(page,'350,100');await command(page,'350,400');}
       else {await command(page,'180,240');await command(page,'@50,30');}
+      if(edit==='COPY'){assert.equal((await state(page)).tool,'copy');await command(page);}
       s=await state(page);assert.equal(s.tool,'select');assert.equal(s.doc.entities.length,edit==='MOVE'?1:2);
       const e=s.doc.entities.at(-1);near(e.points[0].x,edit==='MIRROR'?520:230,.001);near(e.points[0].y,edit==='MIRROR'?240:270,.001);
     });

@@ -179,6 +179,7 @@ async function attachChecks(page) {
   const copiedId = await page.evaluate(() => window.RasmCAD.selectedIds[0]);
   assert.notEqual(copiedId, selectedId);
   pointsNear(await entityPoints(page, copiedId), movedPoints.map(p => ({ x: p.x + 30, y: p.y + 10 })));
+  await command(page); // M1 COPY repeats until Enter; next Undo is standalone.
   await page.locator('#undo-btn').click(); await count(page, 8);
 
   const movedMidpoint = { x: (movedPoints[0].x + movedPoints[1].x) / 2, y: (movedPoints[0].y + movedPoints[1].y) / 2 };

@@ -1,9 +1,9 @@
 /* Independent advanced 2D CAD editing. All edits validate before one history checkpoint. */
 (function (root, factory) {
   'use strict';
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'));
-  else root.RasmEdit = factory(root.RasmCore);
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (C) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'),require('./precision.js'));
+  else root.RasmEdit = factory(root.RasmCore,root.RasmPrecision);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (C,P) {
   'use strict';
   if (!C) throw new Error('RasmCore is required');
   const PI = Math.PI, TAU = 2 * PI, EPS = 1e-8, MAX_PARTS = 4096, MAX_COPIES = 10000;
@@ -16,9 +16,9 @@
   function finite(n,label) { check(typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=1e12,'Invalid '+label);return n; }
   function point(p,label='point') { check(p&&typeof p==='object','Invalid '+label);finite(p.x,label+' X');finite(p.y,label+' Y');return {x:p.x,y:p.y}; }
   function unit(v) { const l=norm(v);check(l>EPS,'Degenerate geometry has no direction');return mul(v,1/l); }
-  function tol(...points) { let scale=1;for(const p of points)scale=Math.max(scale,Math.abs(p.x),Math.abs(p.y));return EPS+Number.EPSILON*64*scale; }
+  const tol=P.tolerance;
   function span(e) { const s=modulo(e.endAngle-e.startAngle);return s<EPS?TAU:s; }
-  function onArcPrimitive(p,c) { return c.full||modulo(Math.atan2(p.y-c.c.y,p.x-c.c.x)-c.start)<=c.sweep+EPS; }
+  function onArcPrimitive(p,c) { return P.onArc(p,c.c,c.r,c.start,c.sweep,c.full); }
   function unique(points,tolerance=EPS) { const out=[];for(const p of points)if(!out.some(q=>distance(p,q)<=Math.max(tolerance,tol(p,q))))out.push(p);return out; }
   function primitives(e) {
     check(e&&Array.isArray(e.points),'Invalid entity');const p=e.points;
@@ -30,7 +30,7 @@
   function lineLine(a,b,infiniteA,infiniteB) {
     const da=sub(a.b,a.a),db=sub(b.b,b.a),la=norm(da),lb=norm(db);if(la<EPS||lb<EPS)return [];
     const den=cross(da,db),delta=sub(b.a,a.a),tolerance=tol(a.a,a.b,b.a,b.b);
-    if(Math.abs(den)<=1e-12*la*lb) {
+    if(P.determinantZero(da.x,da.y,db.x,db.y)) {
       if(Math.abs(cross(delta,da))/la>tolerance)return [];
       // Collinear overlap has no unique infinite intersection. Finite shared endpoints are useful trim cuts.
       if(infiniteA&&infiniteB)return [];
@@ -174,7 +174,7 @@
   function polarArray(doc,ids,center,count,angleDegrees=360){point(center);check(Number.isInteger(count)&&count>=2&&count<=MAX_COPIES,'Polar array count must be 2..10,000');finite(angleDegrees,'array angle');return transaction(doc,w=>{const sources=chosenEntities(w,ids).map(clone);check(sources.length*(count-1)<=MAX_COPIES,'Too many array objects');const result=[],step=angleDegrees*PI/180/(Math.abs(Math.abs(angleDegrees)-360)<EPS?count:count-1);for(let i=1;i<count;i++){const created=sources.map(e=>w.add({...clone(e),id:0}));w.transform(created,{rotation:i*step,pivot:center});result.push(...created);}return result;});}
   function explode(doc,ids){return transaction(doc,w=>{const sources=chosenEntities(w,ids),result=[];for(const e of sources){const parts=[];if(e.kind==='polyline'){for(const p of primitives(e))parts.push({...clone(e),kind:'line',points:[p.a,p.b],closed:false});}else if(e.kind==='dimension'){if(C.annotationGeometry){const g=C.annotationGeometry(e);for(const s of g.segments)parts.push({...clone(e),kind:'line',points:[s.a,s.b],closed:false,color:s.color??e.color});for(const a of g.arcs)parts.push({...clone(e),kind:'arc',points:[a.center],radius:a.radius,startAngle:a.startAngle,endAngle:a.endAngle,color:a.color??e.color});for(const l of g.labels)parts.push({...clone(e),kind:'text',points:[l.point],text:l.text,textHeight:l.height,startAngle:l.angle||0,color:l.color??e.color});}else{const g=C.dimensionGeometry(e);for(const s of[[g.a,g.da],[g.b,g.db],[g.da,g.db]])parts.push({...clone(e),kind:'line',points:s});parts.push({...clone(e),kind:'text',points:[g.label],text:g.length.toFixed(2)});}}else fail('Explode supports polylines and dimensions');result.push(...replace(w,e.id,parts));}return result;});}
   function join(doc,ids,tolerance=1e-6){finite(tolerance,'join tolerance');check(tolerance>0,'Join tolerance must be positive');return transaction(doc,w=>{const list=chosenEntities(w,ids);check(list.length>=2,'Select at least two open lines/polylines');check(list.every(e=>(e.kind==='line'||e.kind==='polyline')&&!e.closed),'Join supports open lines and polylines');check(list.every(e=>e.layer===list[0].layer),'Joined objects must use the same layer');let chain=clone(list[0].points),remaining=list.slice(1);while(remaining.length){let matched=false;for(let i=0;i<remaining.length;i++){let p=clone(remaining[i].points);if(distance(chain.at(-1),p[0])<=tolerance)chain.push(...p.slice(1));else if(distance(chain.at(-1),p.at(-1))<=tolerance){p.reverse();chain.push(...p.slice(1));}else if(distance(chain[0],p.at(-1))<=tolerance)chain.unshift(...p.slice(0,-1));else if(distance(chain[0],p[0])<=tolerance){p.reverse();chain.unshift(...p.slice(0,-1));}else continue;remaining.splice(i,1);matched=true;break;}check(matched,'Selected objects do not form one connected chain');}const closed=distance(chain[0],chain.at(-1))<=tolerance;if(closed)chain.pop();const result={...clone(list[0]),kind:'polyline',points:chain,closed};w.erase(list.slice(1).map(e=>e.id));return replace(w,list[0].id,[result]);});}
-  function area(e){if(e.kind==='circle')return{area:PI*e.radius**2,signedArea:PI*e.radius**2,perimeter:TAU*e.radius};check(e.kind==='polyline'&&e.closed,'Area requires a circle or closed polyline');let sum=0,perimeter=0;for(let i=0;i<e.points.length;i++){sum+=cross(e.points[i],e.points[(i+1)%e.points.length]);perimeter+=distance(e.points[i],e.points[(i+1)%e.points.length]);}return{area:Math.abs(sum)/2,signedArea:sum/2,perimeter};}
+  function area(e){if(e.kind==='circle')return{area:PI*e.radius**2,signedArea:PI*e.radius**2,perimeter:TAU*e.radius};check(e.kind==='polyline'&&e.closed,'Area requires a circle or closed polyline');let sum=0,perimeter=0;for(let i=0;i<e.points.length;i++){sum+=cross(sub(e.points[i],e.points[0]),sub(e.points[(i+1)%e.points.length],e.points[0]));perimeter+=distance(e.points[i],e.points[(i+1)%e.points.length]);}return{area:Math.abs(sum)/2,signedArea:sum/2,perimeter};}
   function angle(a,vertex,b){point(a);point(vertex);point(b);const u=unit(sub(a,vertex)),v=unit(sub(b,vertex));return Math.acos(Math.max(-1,Math.min(1,dot(u,v))))*180/PI;}
   return Object.freeze({trim,extend,offset,fillet,chamfer,mirror,rectangularArray,polarArray,explode,join,area,angle,distance,intersections});
 });
