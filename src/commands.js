@@ -1,9 +1,9 @@
 /* RasmCAD command input helpers. Pure functions; no DOM or drawing mutation. */
 (function (root, factory) {
   'use strict';
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.RasmCommands = factory();
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./precision.js'));
+  else root.RasmCommands = factory(root.RasmPrecision);
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (P) {
   'use strict';
   const LIMIT = 1e12;
   const numericSource = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?';
@@ -201,5 +201,5 @@
     return catalog.filter(entry => entry.name.startsWith(prefix)).slice(0, limit);
   }
 
-  return Object.freeze({ normalizeInput, number, parsePoint, distancePoint, commandSplit, catalog, suggest });
+  return Object.freeze({ normalizeInput, number, parsePoint, distancePoint, commandSplit, catalog, suggest, circleThrough3Points:P.circleThrough3Points });
 });

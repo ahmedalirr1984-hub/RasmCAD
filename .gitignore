@@ -3,3 +3,6 @@ build/
 delivery/
 *.log
 .DS_Store
+dist/RasmCAD-Advanced.html
+vendor/libredwg/wasm/libredwg-web.wasm
+tests/fixtures/

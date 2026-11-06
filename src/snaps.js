@@ -1,18 +1,19 @@
 /* Analytic running object snaps in world coordinates. */
-(function(root,factory){'use strict';if(typeof module==='object'&&module.exports)module.exports=factory(require('./core.js'),require('./editing.js'));else root.RasmSnaps=factory(root.RasmCore,root.RasmEdit);})(typeof globalThis!=='undefined'?globalThis:this,function(C,E){
+(function(root,factory){'use strict';if(typeof module==='object'&&module.exports)module.exports=factory(require('./core.js'),require('./editing.js'),require('./precision.js'));else root.RasmSnaps=factory(root.RasmCore,root.RasmEdit,root.RasmPrecision);})(typeof globalThis!=='undefined'?globalThis:this,function(C,E,P){
 'use strict';
 const TAU=2*Math.PI,dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),mod=a=>(a%TAU+TAU)%TAU;
 const point=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y),allModes=['endpoint','midpoint','center','quadrant','intersection','perpendicular','tangent','nearest'];
-function onArc(e,p){return e.kind==='circle'||mod(Math.atan2(p.y-e.points[0].y,p.x-e.points[0].x)-e.startAngle)<=C.arcSpan(e.startAngle,e.endAngle)+1e-10;}
+function onArc(e,p){return P.onArc(p,e.points[0],e.radius,e.startAngle,C.arcSpan(e.startAngle,e.endAngle),e.kind==='circle');}
 function flat(e,id,out){if(e.kind==='compound'){for(const p of e.parts||[])flat(p,id,out);}else if(e.kind==='dimension'){const g=C.annotationGeometry(e);for(const s of g.segments)out.push({id,e:{kind:'line',points:[s.a,s.b]}});for(const a of g.arcs)out.push({id,e:{kind:'arc',points:[a.center],radius:a.radius,startAngle:a.startAngle,endAngle:a.endAngle}});}else if(e.kind==='polyline'||e.kind==='solid'){const p=e.points;for(let i=1;i<p.length;i++)out.push({id,e:{kind:'line',points:[p[i-1],p[i]]}});if(e.closed||e.kind==='solid')out.push({id,e:{kind:'line',points:[p.at(-1),p[0]]}});}else if(['line','circle','arc','text'].includes(e.kind))out.push({id,e});}
 function projection(p,a,b,clamp){const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy;if(l2===0)return null;let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/l2;if(clamp)t=Math.max(0,Math.min(1,t));else if(t<0||t>1)return null;return{x:a.x+dx*t,y:a.y+dy*t};}
 function nearBounds(e,p,t){if(e.kind==='line'){const[a,b]=e.points;return p.x>=Math.min(a.x,b.x)-t&&p.x<=Math.max(a.x,b.x)+t&&p.y>=Math.min(a.y,b.y)-t&&p.y<=Math.max(a.y,b.y)+t;}if(e.kind==='circle'||e.kind==='arc'){const d=dist(e.points[0],p);return Math.abs(d-e.radius)<=t;}return dist(p,e.points[0])<=t;}
 function find(doc,cursor,tolerance,options={}){
  if(!point(cursor)||!Number.isFinite(tolerance)||tolerance<=0)throw Error('Snap cursor and tolerance must be finite and positive');
  const enabled=new Set(options.modes||allModes),excluded=new Set(options.excludeIds||[]),base=point(options.base)?options.base:null,shapes=[];
+ if(!enabled.size)return null;
  for(const e of doc.entities)if(!excluded.has(e.id)&&doc.layer(e.layer)?.visible!==false)flat(e,e.id,shapes);
- let best=null,bestScore=Infinity;const bias={endpoint:0,intersection:0,midpoint:.04,center:.04,quadrant:.04,perpendicular:.08,tangent:.08,nearest:.6};
- function add(p,type,ids){if(!p||!point(p)||!enabled.has(type))return;const d=dist(cursor,p);if(d>tolerance)return;const score=d+tolerance*(bias[type]||0);if(score<bestScore){bestScore=score;best={point:{x:p.x,y:p.y},type,entityIds:[...new Set(ids)],distance:d};}}
+ let best=null,bestScore=Infinity;const bias={endpoint:0,intersection:0,midpoint:.04,center:.04,quadrant:.04,perpendicular:.08,tangent:.08,nearest:2};
+ function add(p,type,ids){if(!p||!point(p)||!enabled.has(type))return;const d=dist(cursor,p);if(d>tolerance)return;const rank=options.priority?.indexOf(type);const score=options.priority?(rank<0?allModes.length:rank)*tolerance*2+d:d+tolerance*(bias[type]||0);if(score<bestScore){bestScore=score;best={point:{x:p.x,y:p.y},type,entityIds:[...new Set(ids)],distance:d};}}
  const nearby=[];
  for(const item of shapes){const e=item.e,p=e.points,id=item.id;if(e.kind==='line'){
   add(p[0],'endpoint',[id]);add(p[1],'endpoint',[id]);add({x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2},'midpoint',[id]);
@@ -32,11 +33,17 @@ function find(doc,cursor,tolerance,options={}){
  if(enabled.has('intersection')&&['line','circle','arc'].includes(e.kind)&&nearBounds(e,cursor,tolerance))nearby.push(item);
  }
  if(enabled.has('intersection')){
-  // Bound pair work explicitly. Other enabled snaps continue working and the UI
-  // can disclose this rare dense-area limit from the returned warnings.
-  const cap=240,limited=nearby.length>cap?nearby.map(a=>({a,d:a.e.kind==='line'?dist(cursor,projection(cursor,...a.e.points,true)||a.e.points[0]):Math.abs(dist(cursor,a.e.points[0])-a.e.radius)})).sort((a,b)=>a.d-b.d).slice(0,cap).map(x=>x.a):nearby;
-  for(let i=0;i<limited.length;i++)for(let j=i+1;j<limited.length;j++){const a=limited[i],b=limited[j];try{for(const p of E.intersections(a.e,b.e))add(p,'intersection',[a.id,b.id]);}catch(error){if(!/Too many/.test(error.message))throw error;}}
-  if(best&&nearby.length>cap)best.warnings=['Intersection snap used the nearest 240 local curve segments in this dense area.'];
+  // Never discard a curve merely because it was inserted after the 240th.
+  // An explicit pair budget bounds worst-case pointer work. Warn independently
+  // of a winning snap; callers must not mistake an incomplete search for exact.
+  const budget=options.maxIntersectionPairs??100000;let pairs=0,incomplete=false;
+  search:for(let i=0;i<nearby.length;i++)for(let j=i+1;j<nearby.length;j++){
+   // Zero score is a proven optimum; later intersections cannot improve it.
+   if(bestScore===0)break search;
+   if(++pairs>budget){incomplete=true;break search;}
+   const a=nearby[i],b=nearby[j];for(const p of E.intersections(a.e,b.e))add(p,'intersection',[a.id,b.id]);
+  }
+  if(incomplete){const warning='Intersection search incomplete: '+budget+' pair budget reached. Zoom in or use a one-shot snap on isolated geometry.';options.onWarning?.(warning);if(best)best.warnings=[warning];}
  }
  return best;
 }

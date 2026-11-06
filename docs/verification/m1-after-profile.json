@@ -1,0 +1,282 @@
+{
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "linux",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logicalCPUs": 3,
+    "browser": "155.0.8059.79"
+  },
+  "cases": [
+    {
+      "n": 5000,
+      "dense": false,
+      "distribution": "100 columns, rows n/100, spacing40, each line vector(20,10)",
+      "snapModes": [
+        "endpoint",
+        "midpoint",
+        "center",
+        "quadrant",
+        "intersection"
+      ],
+      "apertureWorld": 10,
+      "pureNode": {
+        "snap": {
+          "samples": 150,
+          "medianMs": 0.5824189999998453,
+          "p95Ms": 0.883241999999882,
+          "maxMs": 1.549677999999858
+        },
+        "hover": {
+          "samples": 150,
+          "medianMs": 0.350097999999889,
+          "p95Ms": 0.557830999999851,
+          "maxMs": 0.8917849999997998
+        },
+        "combined": {
+          "samples": 150,
+          "medianMs": 0.9429020000000037,
+          "p95Ms": 1.3645480000000134,
+          "maxMs": 2.0785349999998743
+        }
+      },
+      "browserPure": {
+        "snap": {
+          "samples": 50,
+          "medianMs": 0.6000000014901161,
+          "p95Ms": 1.2999999970197678,
+          "maxMs": 1.6000000014901161
+        },
+        "hover": {
+          "samples": 50,
+          "medianMs": 0.3999999985098839,
+          "p95Ms": 1,
+          "maxMs": 1.3000000044703484
+        },
+        "combined": {
+          "samples": 50,
+          "medianMs": 1,
+          "p95Ms": 2.100000001490116,
+          "maxMs": 2.8000000044703484
+        }
+      },
+      "realPointerHandler": {
+        "samples": 150,
+        "medianMs": 1.5,
+        "p95Ms": 2,
+        "maxMs": 2.5
+      },
+      "renderRAF": {
+        "samples": 150,
+        "medianMs": 2.5,
+        "p95Ms": 3,
+        "maxMs": 8
+      },
+      "pointerEvents": 165,
+      "errors": []
+    },
+    {
+      "n": 20000,
+      "dense": false,
+      "distribution": "100 columns, rows n/100, spacing40, each line vector(20,10)",
+      "snapModes": [
+        "endpoint",
+        "midpoint",
+        "center",
+        "quadrant",
+        "intersection"
+      ],
+      "apertureWorld": 10,
+      "pureNode": {
+        "snap": {
+          "samples": 150,
+          "medianMs": 2.8626690000000963,
+          "p95Ms": 4.391904000000068,
+          "maxMs": 7.560425000000578
+        },
+        "hover": {
+          "samples": 150,
+          "medianMs": 1.7562889999999243,
+          "p95Ms": 3.4310259999992923,
+          "maxMs": 7.151176999999734
+        },
+        "combined": {
+          "samples": 150,
+          "medianMs": 4.672698999999739,
+          "p95Ms": 7.3994519999996555,
+          "maxMs": 12.102554999999484
+        }
+      },
+      "browserPure": {
+        "snap": {
+          "samples": 50,
+          "medianMs": 2.0999999940395355,
+          "p95Ms": 2.3000000044703484,
+          "maxMs": 2.600000001490116
+        },
+        "hover": {
+          "samples": 50,
+          "medianMs": 1.5,
+          "p95Ms": 1.7000000029802322,
+          "maxMs": 2.8000000044703484
+        },
+        "combined": {
+          "samples": 50,
+          "medianMs": 3.5,
+          "p95Ms": 3.899999998509884,
+          "maxMs": 4.800000004470348
+        }
+      },
+      "realPointerHandler": {
+        "samples": 150,
+        "medianMs": 4.799999997019768,
+        "p95Ms": 6.399999998509884,
+        "maxMs": 11.100000001490116
+      },
+      "renderRAF": {
+        "samples": 150,
+        "medianMs": 8.700000002980232,
+        "p95Ms": 9.899999998509884,
+        "maxMs": 14.300000004470348
+      },
+      "pointerEvents": 165,
+      "errors": []
+    },
+    {
+      "n": 5000,
+      "dense": true,
+      "distribution": "n unique diameters through origin, length 2000",
+      "snapModes": [
+        "endpoint",
+        "midpoint",
+        "center",
+        "quadrant",
+        "intersection"
+      ],
+      "apertureWorld": 10,
+      "pureNode": {
+        "snap": {
+          "samples": 35,
+          "medianMs": 22.76082099999985,
+          "p95Ms": 28.722954000000755,
+          "maxMs": 30.370269000000917
+        },
+        "hover": {
+          "samples": 35,
+          "medianMs": 1.0477699999992183,
+          "p95Ms": 1.498330000000351,
+          "maxMs": 1.5993020000005345
+        },
+        "combined": {
+          "samples": 35,
+          "medianMs": 23.799929000000702,
+          "p95Ms": 29.81949800000075,
+          "maxMs": 31.43616699999984
+        }
+      },
+      "browserPure": {
+        "snap": {
+          "samples": 50,
+          "medianMs": 18.600000001490116,
+          "p95Ms": 25.30000000447035,
+          "maxMs": 26.19999999552965
+        },
+        "hover": {
+          "samples": 50,
+          "medianMs": 0.8999999985098839,
+          "p95Ms": 1.6000000014901161,
+          "maxMs": 1.7000000029802322
+        },
+        "combined": {
+          "samples": 50,
+          "medianMs": 19.700000002980232,
+          "p95Ms": 26.399999998509884,
+          "maxMs": 27.299999997019768
+        }
+      },
+      "realPointerHandler": {
+        "samples": 35,
+        "medianMs": 19.69999999552965,
+        "p95Ms": 23.299999997019768,
+        "maxMs": 24.100000001490116
+      },
+      "renderRAF": {
+        "samples": 35,
+        "medianMs": 2.2000000029802322,
+        "p95Ms": 2.8000000044703484,
+        "maxMs": 2.899999998509884
+      },
+      "pointerEvents": 50,
+      "errors": []
+    },
+    {
+      "n": 20000,
+      "dense": true,
+      "distribution": "n unique diameters through origin, length 2000",
+      "snapModes": [
+        "endpoint",
+        "midpoint",
+        "center",
+        "quadrant",
+        "intersection"
+      ],
+      "apertureWorld": 10,
+      "pureNode": {
+        "snap": {
+          "samples": 35,
+          "medianMs": 27.547174000002997,
+          "p95Ms": 32.343927999998414,
+          "maxMs": 34.00422199999957
+        },
+        "hover": {
+          "samples": 35,
+          "medianMs": 5.962052000002586,
+          "p95Ms": 8.984058999998524,
+          "maxMs": 9.604197000000568
+        },
+        "combined": {
+          "samples": 35,
+          "medianMs": 33.904662000000826,
+          "p95Ms": 38.524538999998185,
+          "maxMs": 42.988280999998096
+        }
+      },
+      "browserPure": {
+        "snap": {
+          "samples": 50,
+          "medianMs": 19.400000005960464,
+          "p95Ms": 21.5,
+          "maxMs": 23.799999997019768
+        },
+        "hover": {
+          "samples": 50,
+          "medianMs": 3.3000000044703484,
+          "p95Ms": 4.899999998509884,
+          "maxMs": 9.799999997019768
+        },
+        "combined": {
+          "samples": 50,
+          "medianMs": 22.69999999552965,
+          "p95Ms": 27.19999999552965,
+          "maxMs": 30.200000002980232
+        }
+      },
+      "realPointerHandler": {
+        "samples": 35,
+        "medianMs": 25.600000001490116,
+        "p95Ms": 29,
+        "maxMs": 29.900000005960464
+      },
+      "renderRAF": {
+        "samples": 35,
+        "medianMs": 8.200000002980232,
+        "p95Ms": 9.399999998509884,
+        "maxMs": 10.899999998509884
+      },
+      "pointerEvents": 50,
+      "errors": []
+    }
+  ],
+  "htmlSha256": "6e7bede31f03d7919446ec6aa6a32725e501fa7fe6e580be63a8450807703543",
+  "fileProtocol": "Error: page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at file:///workspace/rasmcad-m1/dist/RasmCAD-Advanced.html",
+  "msedge": "Error: browserType.launch: Chromium distribution 'msedge' is not found at /opt/microsoft/msedge/msedge"
+}

@@ -1,5 +1,9 @@
 # RasmCAD Advanced 0.7
 
+**codex/m1 development branch:** M1-A accuracy, snap/tracking and repeat-command
+changes are documented in [docs/M1-A.md](docs/M1-A.md). Gate A is pending the
+mandatory file:// check; M1-B has not started. This branch does not replace main.
+
 ## GitHub download
 
 Choose **Code → Download ZIP**, extract the repository, then double-click

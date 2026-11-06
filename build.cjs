@@ -9,7 +9,7 @@ for(const [marker,name]of[['STYLES','style.css'],['CORE','core.js'],['APP','app.
 const vendor=name=>fs.readFileSync(path.join(root,'vendor',name),'utf8');
 let glue=vendor('libredwg/wasm/libredwg-web.js').replaceAll('import.meta.url','"file:///rasmcad/libredwg-web.js"').replace('export default createModule;','globalThis.createModule=createModule;');
 const binary=fs.readFileSync(path.join(root,'vendor/libredwg/wasm/libredwg-web.wasm')).toString('base64');
-const extra=[`globalThis.RasmDwgWasm=${JSON.stringify(binary)};`,glue,vendor('libredwg/dist/libredwg-web.umd.cjs'),vendor('dxf-parser/dist/dxf-parser.js'),read('editing.js'),read('dxf-binary.js'),read('io.js'),read('selection.js'),read('grips.js'),read('commands.js'),read('view.js'),read('snaps.js'),read('advanced-edit.js'),read('hatch.js'),read('blocks.js'),read('dimensions.js'),read('plot.js'),read('plot-ui.js'),read('advanced-ui.js')];
+const extra=[`globalThis.RasmDwgWasm=${JSON.stringify(binary)};`,glue,vendor('libredwg/dist/libredwg-web.umd.cjs'),vendor('dxf-parser/dist/dxf-parser.js'),read('precision.js'),read('editing.js'),read('dxf-binary.js'),read('io.js'),read('selection.js'),read('grips.js'),read('commands.js'),read('view.js'),read('tracking.js'),read('snaps.js'),read('advanced-edit.js'),read('hatch.js'),read('blocks.js'),read('dimensions.js'),read('plot.js'),read('plot-ui.js'),read('advanced-ui.js')];
 for(const source of extra)if(/<\/script/i.test(source))throw Error('Unsafe vendor script terminator');
 // Inject dependencies immediately before the UI script; no network fetches are needed.
 // A callback preserves literal $ tokens in embedded source (e.g. regex strings).

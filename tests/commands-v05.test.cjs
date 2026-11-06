@@ -108,6 +108,7 @@ ok(Object.isFrozen(Q.catalog) && Q.catalog.every(Object.isFrozen), 'catalog cann
 
 // The same source exposes the browser global without requiring DOM or Node.
 const sandbox = {};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/precision.js'), 'utf8'), sandbox);
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/commands.js'), 'utf8'), sandbox);
 ok(sandbox.RasmCommands && typeof sandbox.RasmCommands.distancePoint === 'function', 'UMD browser global');
 equal(JSON.parse(JSON.stringify(sandbox.RasmCommands.parsePoint('@١٠<٩٠', p(5, 5)))), p(5, 15));

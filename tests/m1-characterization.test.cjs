@@ -1,0 +1,10 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const C=require('../src/core'),E=require('../src/editing'),S=require('../src/snaps'),K=require('../src/commands');
+const line=(a,b)=>({kind:'line',points:[a,b]});
+test('finite intersections are translation invariant for ordinary coordinates',()=>{for(const o of [0,150000]){const p=E.intersections(line({x:o,y:o},{x:o+10,y:o}),line({x:o+4,y:o-5},{x:o+4,y:o+5}));assert.deepEqual(p,[{x:o+4,y:o}]);}});
+test('running snaps preserve exact endpoint/midpoint/center coordinates',()=>{const d=new C.Document();d.add(line({x:150000,y:170000},{x:150010,y:170000}));d.add({kind:'circle',points:[{x:150020,y:170000}],radius:5});for(const [type,x] of [['endpoint',150000],['midpoint',150005],['center',150020]])assert.deepEqual(S.find(d,{x:x+.01,y:170000.01},.1,{modes:[type]}).point,{x,y:170000});});
+test('hidden curves never snap',()=>{const d=new C.Document();d.add(line({x:0,y:0},{x:10,y:0}));d.layer('0').visible=false;assert.equal(S.find(d,{x:0,y:0},1),null);});
+test('perpendicular is within finite segment and tangent requires exterior base',()=>{const d=new C.Document();d.add(line({x:0,y:0},{x:10,y:0}));assert.deepEqual(S.find(d,{x:4,y:.01},.1,{modes:['perpendicular'],base:{x:4,y:8}}).point,{x:4,y:0});const c=new C.Document();c.add({kind:'circle',points:[{x:0,y:0}],radius:5});assert.equal(S.find(c,{x:5,y:0},.1,{modes:['tangent'],base:{x:1,y:0}}),null);});
+test('native serialization retains resources and undo restores exact geometry',()=>{const d=new C.Document();d.add(line({x:0,y:0},{x:10,y:0}));const before=d.serialize();d.checkpoint();d.transform([1],{translation:{x:3,y:4}});const after=d.serialize();assert.equal(C.Document.parse(after).serialize(),after);assert.equal(d.undo(),true);assert.equal(d.serialize(),before);assert.equal(d.redo(),true);assert.equal(d.serialize(),after);});
+test('typed polar and Arabic digit normalization are preserved',()=>{assert.equal(K.normalizeInput('١٢٫٥'),'12.5');assert.deepEqual(K.distancePoint({x:150000,y:170000},10,{x:150100,y:170000}),{x:150010,y:170000});});
