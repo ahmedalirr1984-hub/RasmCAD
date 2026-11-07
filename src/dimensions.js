@@ -222,5 +222,102 @@
       updated.id=id;w.entities[w.entities.findIndex(item=>item.id===id)]=updated;return[id];
     });
   }
-  return Object.freeze({style,currentStyle,normalizedStyle,styleFields,continueDimension,ordinate,edit,leader,editLeader,leaderEntity,fields:FIELDS,defaults:DEFAULTS});
+  const ORPHAN_TEXT='[ORPHAN]',MAX_ASSOCIATIONS=10000;
+  function associationTable(doc,create=false){
+    const existing=doc.resources?.dimensionAssociations;
+    if(existing!==undefined)check(existing&&typeof existing==='object'&&!Array.isArray(existing),'Invalid dimension associations');
+    if(!existing&&create)resources(doc).dimensionAssociations={};
+    return existing||doc.resources?.dimensionAssociations||{};
+  }
+  function associationSource(doc,id,lookup){
+    check(Number.isSafeInteger(id)&&id>0,'Association source ID must be a positive integer');
+    const e=lookup?lookup.get(id)?.entity:doc.entities.find(item=>item.id===id);check(e,'Association source '+id+' no longer exists');return e;
+  }
+  function normalizedReference(ref){
+    check(ref&&typeof ref==='object'&&!Array.isArray(ref),'Invalid dimension reference');
+    check(Number.isSafeInteger(ref.entityId)&&ref.entityId>0,'Reference needs a positive entityId');
+    check(['start','end','center'].includes(ref.feature),'Reference feature must be start, end or center');
+    return{entityId:ref.entityId,feature:ref.feature};
+  }
+  function referencePoint(doc,ref,lookup){
+    ref=normalizedReference(ref);const e=associationSource(doc,ref.entityId,lookup);
+    if(ref.feature==='center'){check(e.kind==='circle','Center reference needs a CIRCLE source');return copy(e.points[0]);}
+    check(e.kind==='line','Endpoint reference needs a LINE source');return copy(e.points[ref.feature==='start'?0:1]);
+  }
+  function associatedGeometry(doc,dimension,record,lookup){
+    const e=copy(dimension);e.text=record.status==='orphan'?record.originalText||'':e.text;
+    if(record.kind==='linear'){
+      check(['aligned','horizontal','vertical'].includes(e.dimensionStyle),'Association dimension type changed');
+      check(Array.isArray(record.references)&&record.references.length===2,'Linear association needs two references');
+      const a=referencePoint(doc,record.references[0],lookup),b=referencePoint(doc,record.references[1],lookup);
+      const oldA=e.points[0],oldB=e.points[1],location=e.points[2],oldDirection=sub(oldB,oldA),oldLength=norm(oldDirection),direction=sub(b,a),length=norm(direction);
+      check(oldLength>EPS&&length>EPS,'Associated source has zero measured length');if(a.x===oldA.x&&a.y===oldA.y&&b.x===oldB.x&&b.y===oldB.y){C.validateEntity(e);return e;}
+      if(e.dimensionStyle==='horizontal'){
+        check(Math.abs(b.x-a.x)>EPS,'Associated source has zero horizontal length');
+        e.points=[a,b,{x:location.x+((a.x-oldA.x)+(b.x-oldB.x))/2,y:location.y+((a.y-oldA.y)+(b.y-oldB.y))/2}];
+      }else if(e.dimensionStyle==='vertical'){
+        check(Math.abs(b.y-a.y)>EPS,'Associated source has zero vertical length');
+        e.points=[a,b,{x:location.x+((a.x-oldA.x)+(b.x-oldB.x))/2,y:location.y+((a.y-oldA.y)+(b.y-oldB.y))/2}];
+      }else{
+        const oldU=mul(oldDirection,1/oldLength),oldN={x:-oldU.y,y:oldU.x},u=mul(direction,1/length),n={x:-u.y,y:u.x};
+        const relative=sub(location,oldA),fraction=dot(relative,oldU)/oldLength,offset=dot(relative,oldN);
+        e.points=[a,b,add(add(a,mul(u,fraction*length)),mul(n,offset))];
+      }
+    }else if(record.kind==='radial'){
+      check(['radius','diameter'].includes(e.dimensionStyle),'Association dimension type changed');
+      const source=associationSource(doc,record.sourceId,lookup);check(source.kind==='circle','Radial association needs a CIRCLE source');
+      const oldCenter=e.points[0],oldRay=sub(e.points[1],oldCenter),length=norm(oldRay);check(length>EPS,'Invalid radial dimension direction');
+      const center=copy(source.points[0]);if(center.x===oldCenter.x&&center.y===oldCenter.y&&Math.abs(length-source.radius)<=Number.EPSILON*16*Math.max(1,source.radius,Math.abs(center.x),Math.abs(center.y))){C.validateEntity(e);return e;}e.points=[center,add(center,mul(oldRay,source.radius/length)),add(center,sub(e.points[2],oldCenter))];
+    }else throw Error('Unsupported dimension association type');
+    C.validateEntity(e);return e;
+  }
+  function bind(doc,dimensionId,references){
+    return transaction(doc,w=>{
+      const e=editable(w,dimensionId,'dimension'),records=associationTable(w,true);
+      check(own(records,String(dimensionId))||Object.keys(records).length<MAX_ASSOCIATIONS,'Dimension association limit reached');
+      let record={version:1,status:'active',originalText:e.text||''};
+      if(Array.isArray(references)){
+        check(references.length===2,'A linear dimension requires exactly two source references');
+        record={...record,kind:'linear',references:references.map(normalizedReference)};
+      }else{
+        check(references&&typeof references==='object','Choose source references');
+        const source=associationSource(w,references.entityId);
+        if(source.kind==='line')record={...record,kind:'linear',references:[{entityId:source.id,feature:'start'},{entityId:source.id,feature:'end'}]};
+        else if(source.kind==='circle')record={...record,kind:'radial',sourceId:source.id};
+        else throw Error('DIMASSOC supports a LINE or CIRCLE source');
+      }
+      const updated=associatedGeometry(w,e,record);w.entities[w.entities.findIndex(item=>item.id===dimensionId)]=updated;
+      Object.defineProperty(records,String(dimensionId),{value:record,enumerable:true,writable:true,configurable:true});return[dimensionId];
+    });
+  }
+  function associationStatus(doc){return Object.entries(associationTable(doc)).map(([key,record])=>({dimensionId:Number(key),sourceIds:record.kind==='radial'?[record.sourceId]:(record.references||[]).map(ref=>ref.entityId),status:record.status||'active',reason:record.reason||''}));}
+  function detach(doc,ids){
+    check(Array.isArray(ids)&&ids.length,'Select dimensions to detach');
+    return transaction(doc,w=>{const records=associationTable(w),result=[];for(const id of new Set(ids)){const e=editable(w,id,'dimension'),record=records[id];if(!record)continue;if(record.status==='orphan'&&e.text===ORPHAN_TEXT)e.text=record.originalText||'';delete records[id];result.push(id);}return result;});
+  }
+  function updateAssociations(doc){
+    const current=associationTable(doc);if(!Object.keys(current).length)return{updatedIds:[],orphanedIds:[]};
+    check(Object.keys(current).length<=MAX_ASSOCIATIONS,'Dimension association limit reached');
+    // Derived geometry shares the source edit checkpoint. Never create a second
+    // history step: undo/redo must restore the source and annotation together.
+    const before=doc.serialize(),working=C.Document.parse(before),records=associationTable(working),updatedIds=[],orphanedIds=[],lookup=new Map(working.entities.map((entity,index)=>[entity.id,{entity,index}]));
+    for(const [key,record]of Object.entries(records)){
+      const id=Number(key),item=lookup.get(id),index=item?.entity.kind==='dimension'?item.index:-1;
+      if(index<0){delete records[key];continue;}
+      const e=working.entities[index];
+      try{
+        check(record&&typeof record==='object'&&record.version===1,'Unsupported association record');
+        if(record.status!=='orphan')record.originalText=e.text||'';
+        const next=associatedGeometry(working,e,record,lookup);record.status='active';delete record.reason;
+        if(JSON.stringify(next)!==JSON.stringify(e)){working.entities[index]=next;updatedIds.push(id);}
+      }catch(error){
+        if(!record||typeof record!=='object')records[key]={version:1,kind:'invalid',originalText:e.text||''};
+        const active=records[key];if(active.status!=='orphan')active.originalText=e.text||'';
+        active.status='orphan';active.reason=String(error.message).slice(0,500);if(e.text!==ORPHAN_TEXT){e.text=ORPHAN_TEXT;updatedIds.push(id);}orphanedIds.push(id);
+      }
+    }
+    if(working.serialize()!==before){doc.entities=working.entities;doc.resources=working.resources;}
+    return{updatedIds,orphanedIds};
+  }
+  return Object.freeze({style,currentStyle,normalizedStyle,styleFields,continueDimension,ordinate,edit,leader,editLeader,leaderEntity,bind,detach,associationStatus,updateAssociations,fields:FIELDS,defaults:DEFAULTS});
 });

@@ -32,7 +32,7 @@ function transformEntity(entity,m){
   if(typeof e.data.angle==='number')e.data.angle=angle*180/Math.PI+(det<0?-e.data.angle:e.data.angle);
   if(typeof e.data.spacing==='number')e.data.spacing*=sx;
  }
- if(e.subtype==='block'&&e.data?.matrix)e.data.matrix=multiply(m,e.data.matrix);
+ if(['block','polyline'].includes(e.subtype)&&e.data?.matrix)e.data.matrix=multiply(m,e.data.matrix);
  return e;
 }
 function attribute(raw){

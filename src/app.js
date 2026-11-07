@@ -16,11 +16,11 @@
   let lastCreatedId = null, dimensionDefaults = null;
   let propertySelectionKey = '', propertyDirty = new Set();
   let gripPreview = null;
-  let advanced=null,plotUI=null,saveUI=null,plotWindowPick=null,snapType='';
+  let advanced=null,plotUI=null,saveUI=null,recoveryUI=null,selectionTools=null,previousSelection=[],plotWindowPick=null,snapType='';
   let oneShot=null,aperture=10,snapWarning='',polarIncrement=0,otrack=false,dynamicInput=false;
-  let trackingAnchors=[],trackingHit=null,acquisition=null,fromBase=null,awaitFrom=false;
+  let trackingAnchors=[],trackingReferenceIds=[],trackingHit=null,acquisition=null,fromBase=null,awaitFrom=false;
   let snapPriority=null;
-  const VERSION='0.8-dev', commandHistory=[], inputHistory=[], diagnosticEvents=[];
+  const VERSION='0.9-dev', commandHistory=[], inputHistory=[], diagnosticEvents=[];
   let historyIndex=0, historyDraft='', suggestions=[], suggestionIndex=-1;
   const accent = '#69dfc3', ink = '#dce7ef';
   const V = {
@@ -112,6 +112,8 @@
   }
   function changed() {
     dirty = true;
+    window.RasmDimensions.updateAssociations?.(doc);
+    recoveryUI?.changed();
     sync();
   }
   function updateLayers() {
@@ -340,7 +342,9 @@
       dimdiameter: params.circle ? 'DIMDIAMETER: specify label/leader location.' :
                                    'DIMDIAMETER: select a circle/arc, then specify label location.'
     };
-    $('prompt').textContent = extra[tool] || prompts[tool] || 'Specify input in the command field.';
+    $('prompt').textContent = selectionTools?.prompt||extra[tool] || prompts[tool] || 'Specify input in the command field.';
+    if(tool==='polyline'&&params.curvePolyline)$('prompt').textContent=params.plineArc?(params.plineThrough?'PLINE Arc: endpoint; L line, W width, U undo, Enter finish.':'PLINE Arc: through point; L line, W width, U undo, Enter finish.'):'PLINE: endpoint; A arc, W width, U undo, C close, Enter finish.';
+    if(selectionTools?.active)$('prompt').textContent=selectionTools.prompt;
     if(tool==='copy')$('prompt').textContent=params.copyCountInput?'COPY Array: enter count including original (2..10001).':(points.length?'COPY '+(params.copyMode||'multiple')+(params.copyCount?' Array '+params.copyCount+(params.copyFit?' Fit':' Spacing'):'')+': destination; Single/Multiple/Array/Fit/U; Enter finishes.':'COPY: select objects/base point; Single/Multiple/Array options.');
     if(['rotate','scale'].includes(tool)&&params.reference)$('prompt').textContent=tool.toUpperCase()+(params.reference==='target'?': new '+(tool==='rotate'?'angle':'length')+' as number or point.':': reference '+(tool==='rotate'?'angle':'length')+' as number or two points.');
     if(tool==='rectangle'&&(params.rectStage||params.rectWidth))$('prompt').textContent=params.rectStage?'RECTANGLE Dimensions: enter '+params.rectStage+'.':'RECTANGLE: pick quadrant for entered width/height.';
@@ -358,17 +362,17 @@
     if(plotWindowPick){const callback=plotWindowPick.callback;plotWindowPick=null;callback(null);}
     if(next==='explode'&&advanced){advanced.execute('EXPLODE');return;}
     if(advanced?.active)advanced.cancel();
-    if (tool==='polyline'&&points.length>=2&&next!==tool){const p=points;points=[];append(make('polyline',p,{closed:false}));}
+    if (tool==='polyline'&&points.length>=2&&next!==tool){const entity=polylineEntity(false);points=[];append(entity);}
     selected=new Set([...selected].filter(id=>doc.entities.some(e=>e.id===id&&editable(e))));
     const needsSelection=['move','copy','rotate','scale','offset','mirror','array','polararray','explode','join','erase'].includes(next);
     if ((next === 'explode' || next === 'join')&&selected.size) {
       finishEdit(E[next](doc, [...selected]));
       return;
     }
-    if(['line','polyline','rectangle','circle','arc','text','dimension','dimlinear','dimangular','dimradius','dimdiameter'].includes(next))selected.clear();
+    if(['line','polyline','rectangle','circle','arc','text','dimension','dimlinear','dimangular','dimradius','dimdiameter'].includes(next)){if(selected.size)previousSelection=[...selected];selected.clear();}
     if (next !== 'select') lastTool = next;
     tool = next;
-    oneShot=null;fromBase=null;awaitFrom=false;trackingAnchors=[];trackingHit=null;acquisition=null;
+    oneShot=null;fromBase=null;awaitFrom=false;trackingAnchors=[];trackingReferenceIds=[];trackingHit=null;acquisition=null;
     points = [];
     params = {boundaries: [...selected],acquiring:needsSelection&&!selected.size};
     snapPoint = null;
@@ -390,6 +394,7 @@
     prompt();sync();log(selected.size+' objects selected. Follow the command prompt.');
   }
   function finishCommand(){
+    if(selectionTools?.active){selectionTools.finish();return;}
     if(plotWindowPick){log('PLOT: pick both window corners, or Esc to cancel.',true);return;}
     if(advanced?.active){advanced.finish();return;}
     if(params.acquiring){commitSelection();return;}
@@ -406,6 +411,8 @@
     setTool('select');log('Command finished. Select objects or start another command.');
   }
   function cancelCommand(){
+    if(selectionTools?.cancel())return;
+    if(selected.size)previousSelection=[...selected];
     if(plotWindowPick){const cb=plotWindowPick.callback;plotWindowPick=null;points=[];setTool('select',false);cb(null);return;}
     if(advanced?.active)advanced.cancel();
     if(tool==='polyline'&&points.length>=2){finishPolyline(false);}else{points=[];setTool('select',false);}
@@ -438,7 +445,7 @@
     log('Edit completed. ' + ids.length + ' resulting objects.');
   }
   const repeating=()=>['trim','extend','offset','copy','matchprop'].includes(tool);
-  function repeatedEdit(ids){params.editCount=(params.editCount||0)+1;params.lastEditState=doc.serialize();changed();prompt();sync();log(tool.toUpperCase()+': edit completed. Pick again; U undo; Enter/Esc finish.');return ids;}
+  function repeatedEdit(ids){window.RasmDimensions.updateAssociations?.(doc);params.editCount=(params.editCount||0)+1;params.lastEditState=doc.serialize();changed();prompt();sync();log(tool.toUpperCase()+': edit completed. Pick again; U undo; Enter/Esc finish.');return ids;}
   function undoRepeated(){if(params.lastEditState&&doc.serialize()!==params.lastEditState){setTool('select',false);history();log('Intervening document edit undone. Repeated command ended; Undo remains available.');return;}if(!params.editCount){log('No edits in this command to undo.');return;}doc.undo();params.editCount--;params.lastEditState=doc.serialize();selected=new Set((tool==='copy'?params.copySource||[]:tool==='offset'?params.offsetSourceHistory?.pop()||[...selected]:[...selected]).filter(id=>doc.entities.some(e=>e.id===id)));changed();prompt();sync();log('Last '+tool.toUpperCase()+' edit undone. Continue or Enter/Esc.');}
   function measured(result, message) {
     lastMeasurement = result;
@@ -459,7 +466,7 @@
         log('MATCHPROP: pick multiple targets; S Settings; U Undo; Enter/Esc finishes.');
         return true;
       }
-      const before=doc.serialize(),ids=window.RasmProperties.matchProperties(doc,params.source.id,[e.id],{fields:params.matchFields||window.RasmProperties.defaults});if(ids.length&&doc.serialize()!==before){selected=new Set(ids);repeatedEdit(ids);}else log('MATCHPROP: source and target are the same or no properties changed.');
+      const before=doc.serialize(),ids=window.RasmProperties.matchProperties(doc,params.source.id,[e.id],{fields:params.matchFields||window.RasmProperties.defaults,includeChildren:params.matchChildren||false});if(ids.length&&doc.serialize()!==before){selected=new Set(ids);repeatedEdit(ids);}else log('MATCHPROP: source and target are the same or no properties changed.');
       return true;
     }
     if (tool === 'trim' || tool === 'extend') {
@@ -586,15 +593,23 @@
     }
     return false;
   }
+  function setPlineWidth(raw){const v=raw.split(',').map(Number);if(!v.length||v.length>2||v.some(x=>!Number.isFinite(x)||x<0||x>1e9))throw Error('PLINE width must be finite and nonnegative.');params.plineWidthInput=false;params.curvePolyline=true;params.plineWidth={start:v[0],end:v[1]??v[0]};prompt();log('PLINE segment width '+params.plineWidth.start+' → '+params.plineWidth.end);return true;}
+  function polylineEntity(close){
+    if(!params.curvePolyline)return make('polyline',points,{closed:close&&points.length>=3});
+    const bulges=[...(params.plineBulges||[])],widths=[...(params.plineWidths||[])];
+    if(close&&points.length>=3){bulges.push(params.plineThrough?window.RasmCurvePolyline.arcBulge(points.at(-1),params.plineThrough,points[0]):0);widths.push(params.plineWidth||{start:0,end:0});}
+    return window.RasmCurvePolyline.create(points,{bulges,widths,closed:close&&points.length>=3,layer:doc.currentLayer});
+  }
   function finishPolyline(close) {
-    const vertices=points.map(p=>({...p}));points=[];
-    if (vertices.length >= 2) {
-      append(make('polyline', vertices, {closed: close&&vertices.length>=3}));
+    const vertices=points.map(p=>({...p})),entity=vertices.length>=2?polylineEntity(close):null;points=[];
+    if (entity) {
+      append(entity);
       log('Polyline created.');
     }
     setTool('select');
   }
   function acceptPoint(p) {
+    if(selectionTools?.point(p))return;
     if(plotWindowPick){plotWindowPick.points.push({...p});if(plotWindowPick.points.length===2){const[a,b]=plotWindowPick.points;if(Math.abs(a.x-b.x)<1e-9||Math.abs(a.y-b.y)<1e-9){plotWindowPick.points.pop();throw Error('Plot window needs nonzero width and height.');}const callback=plotWindowPick.callback;plotWindowPick=null;setTool('select',false);callback({valid:true,min:{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y)},max:{x:Math.max(a.x,b.x),y:Math.max(a.y,b.y)}});}else{log('PLOT: pick opposite window corner.');}return;}
     if(awaitFrom){fromBase={...p};awaitFrom=false;oneShot=null;prompt();log('FROM: enter @dx,dy or @distance<angle from the temporary base.');return;}
     if(fromBase){fromBase=null;}
@@ -605,6 +620,7 @@
       throw Error('Coordinates out of range.');
     if(params.acquiring){pick(worldToScreen(p),{});return;}
     if(tool==='rectangle'&&params.rectStage)throw Error('Enter rectangle '+params.rectStage+' before picking its quadrant.');
+    if(tool==='polyline'&&params.plineArc&&!params.plineThrough&&points.length){params.plineThrough={...p};prompt();schedule();log('PLINE Arc: pick endpoint.');return;}
     const savedPoints=points.map(q=>({...q}));
     try {
     if (advancedPoint(p)) return;
@@ -615,13 +631,15 @@
     if (['move', 'copy'].includes(tool)) {
       if (!points.length){points=[p];if(tool==='copy')params.copySource=[...selected];}
       else {
-        const delta=V.sub(p,points[0]),next=C.Document.parse(doc.serialize());
-        const sourceIds=(tool==='copy'?params.copySource:[...selected]).filter(id=>doc.entities.some(e=>e.id===id&&editable(e)));
+        const delta=V.sub(p,points[0]),lookup=new Map(doc.entities.map(e=>[e.id,e]));
+        const sourceIds=(tool==='copy'?params.copySource:[...selected]).filter(id=>lookup.has(id)&&editable(lookup.get(id)));
+        if(tool==='copy'&&(params.copyCount||2)-1>10000/Math.max(1,sourceIds.length))throw Error('COPY Array exceeds 10000 new objects.');
+        const next=C.Document.parse(doc.serialize());
         if(!sourceIds.length)throw Error('Original selection is no longer editable.');
         let ids=sourceIds;
         if(tool==='copy'){
           const count=params.copyCount||2,total=count-1;if(total*sourceIds.length>10000)throw Error('COPY Array exceeds 10000 new objects.');ids=[];
-          for(let i=1;i<count;i++){const created=sourceIds.map(id=>next.add({...doc.entities.find(e=>e.id===id),id:undefined}));const factor=params.copyFit?i/(count-1):i;next.transform(created,{translation:V.mul(delta,factor)});ids.push(...created);}
+          for(let i=1;i<count;i++){const created=sourceIds.map(id=>next.add({...lookup.get(id),id:undefined}));const factor=params.copyFit?i/(count-1):i;next.transform(created,{translation:V.mul(delta,factor)});ids.push(...created);}
         }else next.transform(ids,{translation:delta});
         next.serialize();doc.checkpoint();doc.entities=next.entities;doc.nextId=next.nextId;selected=new Set(ids);changed();
         if(tool==='copy'){const single=params.copyMode==='single';repeatedEdit(ids);if(single)setTool('select');}else setTool('select');
@@ -645,6 +663,7 @@
     if(tool==='polyline'&&points.length&&C.distance(points.at(-1),p)<1e-9)return;
     if(['dimension','dimlinear'].includes(tool)&&points.length===1&&C.distance(points[0],p)<1e-9)throw Error('Choose distinct extension points.');
     if(tool==='polyline'&&points.length)params.lastDirection=V.sub(p,points.at(-1));
+    if(tool==='polyline'&&points.length&&params.curvePolyline){const bulge=params.plineArc?window.RasmCurvePolyline.arcBulge(points.at(-1),params.plineThrough,p):0;(params.plineBulges??=[]).push(bulge);(params.plineWidths??=[]).push(params.plineWidth||{start:0,end:0});params.plineThrough=null;}
     points.push(p);
     if(tool==='line'&&points.length===1){params.lineStart={...p};params.lineIds=[];}
     if (tool === 'line' && points.length === 2) {
@@ -695,8 +714,8 @@
     snapWarning='';trackingHit=null;
     const base=fromBase||advanced?.basePoint||points.at(-1)||null;
     if(snap||oneShot){
-      const hit=window.RasmSnaps.find(doc,p,aperture/zoom,{modes:oneShot==='none'?[]:oneShot?[oneShot]:advanced?.snapModes,priority:snapPriority,base,excludeIds:gesture?.kind==='grip'?[gesture.id]:[],onWarning:w=>{snapWarning=w;}});
-      if(hit){p={...hit.point};snapPoint=p;snapType=hit.type;}
+      const hit=window.RasmSnaps.find(doc,p,aperture/zoom,{modes:oneShot==='none'?[]:oneShot?[oneShot]:advanced?.snapModes,priority:snapPriority,base,parallelIds:trackingReferenceIds,excludeIds:gesture?.kind==='grip'?[gesture.id]:[],onWarning:w=>{snapWarning=w;}});
+      if(hit){p={...hit.point};snapPoint=p;snapType=hit.type;if(hit.entityIds?.length)trackingReferenceIds=hit.entityIds;}
       if(otrack&&hit&&['endpoint','midpoint','center','intersection','quadrant'].includes(hit.type)){
         const now=performance.now();if(!acquisition||C.distance(acquisition.point,hit.point)>1e-9)acquisition={point:{...hit.point},since:now};
         else if(now-acquisition.since>=350&&!trackingAnchors.some(a=>C.distance(a,hit.point)<1e-9)){trackingAnchors.push({...hit.point});if(trackingAnchors.length>4)trackingAnchors.shift();}
@@ -744,7 +763,7 @@
   function history(redo = false) {
     if(!redo&&repeating()){undoRepeated();return;}
     if(!redo&&tool==='line'&&params.lineIds?.length){execute('U');return;}
-    if(!redo&&tool==='polyline'&&points.length>1){points.pop();prompt();schedule();log('Last polyline vertex undone.');return;}
+    if(!redo&&tool==='polyline'&&points.length>1){execute('U');return;}
     points=[];
     if (redo ? doc.redo() : doc.undo()) {
       selected.clear();
@@ -813,14 +832,29 @@
     download(JSON.stringify(result,null,2),'RasmCAD-'+VERSION+'-diagnostics.json','application/json');
     log('Diagnostics downloaded. Review the file before sharing: recent command text is included.');
   }
+  function applyFenceEdit(ids,state){
+    const working=C.Document.parse(doc.serialize()),result=[],boundaries=new Set(state.boundaries||[]);let skipped=0;
+    const vertices=state.points,center=vertices.length===2?V.mul(V.add(vertices[0],vertices[1]),.5):vertices[0];
+    for(const id of ids){if(boundaries.has(id))continue;const e=working.entities.find(e=>e.id===id);if(!e)continue;let pickPoint=center;
+      if(state.mode==='FENCE'){let found=null;for(let i=1;i<vertices.length&&!found;i++){try{found=E.intersections(e,make('line',[vertices[i-1],vertices[i]]))[0];}catch(_){}}if(!found){skipped++;continue;}pickPoint=found;}
+      try{result.push(...E[state.operation](working,id,pickPoint,[...boundaries],{edge:state.edge||'none'}));}catch(error){skipped++;}
+    }
+    if(working.serialize()!==doc.serialize()){doc.checkpoint();doc.entities=working.entities;doc.nextId=working.nextId;doc.resources=working.resources;repeatedEdit(result);}
+    log(state.operation.toUpperCase()+': '+result.length+' resulting objects; '+skipped+' unsupported/no-cut targets skipped. U undoes this group.');
+  }
   function showMatchSettings(){
     const fields=params.matchFields||window.RasmProperties.defaults;
-    advanced.dialog('Match Properties — choose fields',window.RasmProperties.fields.map(key=>({name:key,label:key==='styleName'?'Full dimension style':key,type:'checkbox',value:fields.includes(key)})),values=>{params.matchFields=Object.keys(values).filter(k=>values[k]);log('MATCHPROP fields: '+params.matchFields.join(', '));});
+    advanced.dialog('Match Properties — choose fields',window.RasmProperties.fields.map(key=>({name:key,label:key==='styleName'?'Full dimension style':key,type:'checkbox',value:fields.includes(key)})).concat([{name:'includeChildren',label:'Apply to explicit styles inside compound objects',type:'checkbox',value:params.matchChildren||false}]),values=>{params.matchChildren=values.includeChildren;params.matchFields=Object.keys(values).filter(k=>k!=='includeChildren'&&values[k]);log('MATCHPROP fields: '+params.matchFields.join(', '));});
   }
   function commandOptions(raw){
     const input=Commands.normalizeInput(raw).trim(),parts=input.toUpperCase().split(/\s+/),word=parts[0],rest=parts.slice(1);
     const scalar=Commands.number(input);
     if(params.acquiring)return false;
+    if(tool==='polyline'){
+      if(['A','ARC','L','LINE'].includes(word)&&!rest.length){if(!points.length)throw Error('Specify PLINE start point first.');params.curvePolyline=true;params.plineArc=['A','ARC'].includes(word);params.plineThrough=null;prompt();log(params.plineArc?'PLINE Arc: pick through point, then end point.':'PLINE Line: pick next endpoint.');return true;}
+      if(['W','WIDTH'].includes(word)){if(rest.length>1)throw Error('WIDTH expects one width or start,end widths.');if(!rest.length){params.plineWidthInput=true;log('PLINE: enter width, or start,end widths.');return true;}return setPlineWidth(rest[0]);}
+      if(params.plineWidthInput)return setPlineWidth(input);
+    }
     if(tool==='copy'){
       if(['S','SINGLE','M','MULTIPLE'].includes(word)&&!rest.length){params.copyMode=['S','SINGLE'].includes(word)?'single':'multiple';prompt();log('COPY '+params.copyMode+'. Array count includes the original object.');return true;}
       if(['A','ARRAY'].includes(word)){let count=null,fit=false;if(rest.length){if(!/^\d+$/.test(rest[0])||Number(rest[0])<2||Number(rest[0])>10001)throw Error('COPY Array count must be 2..10001 including original.');count=Number(rest[0]);if(rest[1]){if(rest[1]!=='FIT'||rest.length>2)throw Error('COPY Array: count and optional FIT.');fit=true;}}params.copyCount=count;params.copyCountInput=count===null;params.copyFit=fit;prompt();return true;}
@@ -866,10 +900,12 @@
       finishCommand();
       return;
     }
+    if(['trim','extend'].includes(tool)&&/^(F|FENCE|C|CROSSING)$/i.test(input)){selectionTools.start(/^(F|FENCE)$/i.test(input)?'FENCE':'CROSSING',{operation:tool,boundaries:[...(params.boundaries||[])],edge:params.edge});return;}
+    if(!(tool==='text'&&points.length)&&!advanced?.textInput&&selectionTools?.execute(input))return;
     if(!(tool==='text'&&points.length)&&!advanced?.textInput&&commandOptions(input))return;
     if(!(tool==='text'&&points.length)&&!advanced?.textInput){
       const [word,...words]=Commands.normalizeInput(input).toUpperCase().split(/\s+/),rest=words.join(' ');
-      const modes={END:'endpoint',MID:'midpoint',CEN:'center',QUA:'quadrant',INT:'intersection',PER:'perpendicular',TAN:'tangent',NEA:'nearest',NON:'none'};
+      const modes={END:'endpoint',MID:'midpoint',CEN:'center',QUA:'quadrant',INT:'intersection',PER:'perpendicular',TAN:'tangent',NEA:'nearest',EXT:'extension',PAR:'parallel',NON:'none'};
       if(modes[word]&&!rest){if(tool==='select'&&!advanced?.active)throw Error('Start a point-based command before using a snap override.');oneShot=modes[word];log(word+': next picked point only. Running snaps are preserved.');return;}
       if(word==='APERTURE'){const n=Number(rest);if(!rest||!Number.isFinite(n)||n<1||n>50)throw Error('APERTURE requires 1..50 screen pixels.');aperture=n;log('Snap aperture = '+n+' pixels.');return;}
       if(word==='SNAPPRIORITY'){const names=rest.toLowerCase().split(/[,\s]+/);if(rest==='DEFAULT')snapPriority=null;else{if(!rest||names.some(n=>!window.RasmSnaps.modes.includes(n)))throw Error('SNAPPRIORITY: full mode names in order, or DEFAULT.');snapPriority=names;}log('Snap priority updated.');return;}
@@ -878,7 +914,7 @@
       if(word==='FROM'&&!rest){if(tool==='select'&&!advanced?.active)throw Error('Start a drawing/edit point prompt first.');awaitFrom=true;fromBase=null;log('FROM: pick temporary base, then enter @dx,dy or @distance<angle.');return;}
       if(repeating()&&['U','UNDO'].includes(word)&&!rest){undoRepeated();return;}
     }
-    if(advanced?.active||/^(STRETCH|BREAK|LENGTHEN|ALIGN|PEDIT|SPLINEDIT|SPLINE|OVERKILL|EXPLODE|EXPLOAD|HATCH|HATCHEDIT|BOUNDARY|REGION|BLOCK|INSERT|WBLOCK|BEDIT|REFEDIT|BCLOSE|ATTDEF|ATTEDIT|ATTSYNC|DIMSTYLE|DIMCONTINUE|DIMBASELINE|DIMORDINATE|DIMEDIT|QLEADER|MLEADER|MLEADEREDIT|OSNAPSET)(?:\s|$)/i.test(input)){if(advanced.execute(input))return;}
+    if(advanced?.active||/^(STRETCH|BREAK|LENGTHEN|ALIGN|PEDIT|SPLINEDIT|SPLINE|OVERKILL|EXPLODE|EXPLOAD|HATCH|HATCHEDIT|BOUNDARY|REGION|BLOCK|INSERT|WBLOCK|BEDIT|REFEDIT|BCLOSE|ATTDEF|ATTEDIT|ATTSYNC|DIMSTYLE|DIMCONTINUE|DIMBASELINE|DIMORDINATE|DIMEDIT|QLEADER|MLEADER|MLEADEREDIT|OSNAPSET|DIMASSOC)(?:\s|$)/i.test(input)){if(advanced.execute(input))return;}
     if(params.acquiring){const p=parsePoint(input);if(p){acceptPoint(p);return;}if(['ALL','A'].includes(input.toUpperCase())){selected=new Set(doc.entities.filter(editable).map(e=>e.id));sync();return;}throw Error('Select objects, then press Enter. Esc cancels.');}
     if (tool === 'text' && points.length) {
       append(make('text', [points[0]], {text: input, textHeight:clamp(14/zoom,1e-6,1e9)}));
@@ -893,7 +929,7 @@
     }
     if(tool==='line'&&input.toUpperCase()==='C'){if(!params.lineStart||!params.lineIds?.length)throw Error('Draw line segments before Close.');if(C.distance(points[0],params.lineStart)>1e-9)append(make('line',[points[0],params.lineStart]));setTool('select');return;}
     if(tool==='line'&&['U','UNDO'].includes(input.toUpperCase())){const id=params.lineIds?.at(-1),e=doc.entities.find(e=>e.id===id);if(!e){log('No more segments in this LINE command to undo.');return;}const start={...e.points[0]};doc.undo();params.lineIds.pop();points=[start];changed();prompt();log('Last LINE segment undone. Continue drawing or Finish.');return;}
-    if(tool==='polyline'&&['U','UNDO'].includes(input.toUpperCase())){if(points.length>1)points.pop();prompt();schedule();return;}
+    if(tool==='polyline'&&['U','UNDO'].includes(input.toUpperCase())){if(params.plineThrough)params.plineThrough=null;else if(points.length>1){points.pop();params.plineBulges?.pop();params.plineWidths?.pop();}prompt();schedule();return;}
     if(tool==='circle'&&!points.length&&['2P','3P'].includes(input.toUpperCase())){params.circleMode=input.toUpperCase();prompt();return;}
     if(tool==='circle'&&points.length===1&&!params.circleMode&&input.toUpperCase()==='D'){params.circleDiameter=true;prompt();log('CIRCLE: enter diameter (not radius).');return;}
     if (tool === 'array') {
@@ -1059,6 +1095,7 @@
       ERASE: erase,
       SAVE: save,
       SAVEAS: () => saveUI.show(),
+      RECOVERY:()=>recoveryUI?.show(),
       QSAVE: save,
       OPEN: () => openPicker(),
       IMPORT: () => openPicker(),
@@ -1096,6 +1133,8 @@
             'Unsaved changes. Cancel and Save project to keep them, or OK to discard them.');
   }
   function setDocument(next, name, saved) {
+    selectionTools?.cancel();previousSelection=[];
+    window.RasmDimensions.updateAssociations?.(next);
     saveUI?.reset?.();
     const layerRecovery=IO.ensureWritableLayer(next);
     // Replacing a document must not finish an old PLINE into the new document.
@@ -1296,12 +1335,14 @@
     }
   }
   function preview() {
+    if(selectionTools?.active){for(const e of selectionTools.preview(previewWorld))drawEntity(e,accent,1);return;}
     if(plotWindowPick){if(plotWindowPick.points.length&&mouse){const a=plotWindowPick.points[0],p=screenToWorld(mouse);drawEntity(make('polyline',[a,{x:p.x,y:a.y},p,{x:a.x,y:p.y}],{closed:true}),accent);}return;}
     if(advanced?.active){for(const e of advanced.preview())drawEntity(e,accent);return;}
     if (!points.length||params.acquiring) return;
     const p = mouse ? constrained(mouse) : points.at(-1);
     let e;
     if (tool === 'line' || tool === 'polyline') e = make('polyline', [...points, p]);
+    if(tool==='polyline'&&params.curvePolyline){try{const bs=[...(params.plineBulges||[])],ws=[...(params.plineWidths||[])];if(!params.plineArc||params.plineThrough){bs.push(params.plineArc?window.RasmCurvePolyline.arcBulge(points.at(-1),params.plineThrough,p):0);ws.push(params.plineWidth||{start:0,end:0});e=window.RasmCurvePolyline.create([...points,p],{bulges:bs,widths:ws});}else if(points.length>=2)e=polylineEntity(false);}catch(_){e=null;}}
     if (tool === 'rectangle') {
       const a=points[0],q=params.rectWidth&&params.rectHeight?{x:a.x+(p.x>=a.x?1:-1)*params.rectWidth,y:a.y+(p.y>=a.y?1:-1)*params.rectHeight}:p;
       e=make('polyline',[a,{x:q.x,y:a.y},q,{x:a.x,y:q.y}],{closed:true});
@@ -1433,6 +1474,7 @@
     schedule();
   }
   function pick(px, modifiers = {}) {
+    if(selected.size)previousSelection=[...selected];
     const hits=S.candidates(doc,screenToWorld(px),7/zoom),found=hits[0];
     if(selectionMode==='replace'&&!params.acquiring&&!modifiers.ctrlKey&&!modifiers.metaKey&&!modifiers.shiftKey)selected.clear();
     if(found){
@@ -1449,6 +1491,7 @@
     e.preventDefault();canvas.focus();const px=pointer(e);mouse=px;canvas.setPointerCapture(e.pointerId);
     if(e.button===1||tool==='pan'){gesture={kind:'pan',start:px,camera:{...camera}};canvas.style.cursor='grabbing';return;}
     if(e.button===2){gesture={kind:'right',start:px};return;}
+    if(selectionTools?.active){gesture={kind:'selection-tools'};acceptPoint(constrained(px));$('command').focus();return;}
     if(advanced?.active&&!advanced.acquiring){gesture={kind:'advanced'};acceptPoint(constrained(px));$('command').focus();return;}
     if(tool==='select'&&!params.acquiring&&!advanced?.active&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey){const grip=gripAt(px);if(grip){gesture={kind:'grip',...grip,start:px,moved:false};selectionCycle=null;canvas.style.cursor='move';log('Drag '+grip.role+'. Release to apply; Esc cancels.');return;}}
     if(tool==='select'||params.acquiring){gesture={kind:'select',start:px,moved:false,modifiers:{ctrlKey:e.ctrlKey,metaKey:e.metaKey,shiftKey:e.shiftKey}};return;}
@@ -1488,6 +1531,7 @@
       else if(tool==='select'&&selected.size)log(selected.size+' objects selected. Choose an edit command or Properties.');
     }else if(g?.kind==='select'){
       if(g.moved){
+        if(selected.size)previousSelection=[...selected];
         const ids=S.windowSelect(doc,screenToWorld(g.start),screenToWorld(px),px.x<g.start.x),m=g.modifiers;
         if(selectionMode==='replace'&&!params.acquiring&&!m.shiftKey&&!m.ctrlKey&&!m.metaKey)selected.clear();
         for(const id of ids)if(m.shiftKey)selected.delete(id);else if((m.ctrlKey||m.metaKey)&&selected.has(id))selected.delete(id);else selected.add(id);
@@ -1523,6 +1567,7 @@
   bind('new-btn', newDrawing);
   bind('open-btn', openPicker);
   bind('save-btn', save);
+  if($('recovery-btn'))bind('recovery-btn',()=>recoveryUI.show());
   if($('save-as-btn'))bind('save-as-btn',()=>saveUI.show());
   bind('example-btn', example);
   bind('dxf-btn', exportDxf);
@@ -1616,7 +1661,7 @@
                                   e.target instanceof HTMLTextAreaElement;
                               const cmd = e.target === $('command');
                               const empty = cmd && !$('command').value;
-                              if(document.querySelector('.advanced-dialog[open],#plot-dialog[open],#save-dialog[open]'))return;
+                              if(document.querySelector('.advanced-dialog[open],#plot-dialog[open],#save-dialog[open],#recovery-dialog[open]'))return;
                               if ($('help-dialog').open || $('import-report').open) {
                                 if (e.key === 'Escape') {
                                   if ($('help-dialog').open) $('help-dialog').close();
@@ -1725,21 +1770,28 @@
     parsePoint:(raw,base)=>Commands.parsePoint(raw,fromBase||base||null),acceptPoint,
     getDocument:()=>doc,getSelection:()=>[...selected],
     enter:()=>{setTool('select',false);},
-    changed:(ids,message)=>{if(ids)selected=new Set(ids);dirty=true;updateLayers();prompt();sync();if(message)log(message);},
+    changed:(ids,message)=>{if(ids)selected=new Set(ids);changed();updateLayers();prompt();sync();if(message)log(message);},
     refresh:()=>{prompt();sync();},focus:()=>$('command').focus(),log,download,
     append:e=>{ensureDrawingLayer();append(e);},
     crossing:(a,b)=>S.windowSelect(doc,a,b,true),
     selectAll:()=>{selected=new Set(doc.entities.filter(editable).map(e=>e.id));prompt();sync();},
     replaceDocument:(next,name)=>setDocument(next,name,false)
   });
+  selectionTools=window.RasmSelectionTools.mount({getDocument:()=>doc,getPrevious:()=>previousSelection,acquiring:()=>params.acquiring,parsePoint:(raw,base)=>Commands.parsePoint(raw,base||null),dialog:advanced.dialog,refresh:()=>{prompt();sync();},log,
+    begin:()=>{if(tool!=='select'&&!params.acquiring&&!['trim','extend'].includes(tool))setTool('select',false);},
+    apply:(ids,state)=>{if(state.operation){applyFenceEdit(ids,state);return;}if(selected.size)previousSelection=[...selected];if(state.replace||selectionMode==='replace')selected=new Set(ids);else for(const id of ids)selected.add(id);log(ids.length+' objects selected.');}
+  });
+  recoveryUI=window.RasmRecovery?.mount({getDocument:()=>doc,getName:()=>filename,isDirty:()=>dirty,restore:(next,name)=>{if(!confirmReplace())return false;setDocument(next,name,false);return true;},log});
   saveUI=window.RasmSaveUI.mount({getDocument:()=>doc,getFilename:()=>filename,download,log,onNativeSaved:name=>{filename=name;dirty=false;sync();}});
   plotUI=window.RasmPlotUI.mount({getDocument:()=>doc,download,log,
     getSelectionIds:()=>[...selected],
     getDisplayBounds:()=>({valid:true,min:screenToWorld({x:0,y:H}),max:screenToWorld({x:W,y:0})}),
     pickWindow:callback=>{setTool('id');plotWindowPick={callback,points:[]};log('PLOT: pick first window corner.');},
     getSelectionBounds:()=>{const b={valid:false,min:{x:0,y:0},max:{x:0,y:0}};for(const e of doc.entities)if(selected.has(e.id)){const q=C.entityBounds(e);if(q.valid){if(!b.valid){b.min={...q.min};b.max={...q.max};b.valid=true;}else{b.min.x=Math.min(b.min.x,q.min.x);b.min.y=Math.min(b.min.y,q.min.y);b.max.x=Math.max(b.max.x,q.max.x);b.max.y=Math.max(b.max.y,q.max.y);}}}return b.valid?b:null;},
+    setPlotResources:patch=>{const next=C.Document.parse(doc.serialize());Object.assign(next.resources,patch);const data=next.serialize();if(data===doc.serialize())return;doc.checkpoint();doc.resources=next.resources;changed();},
     setPlotSettings:settings=>{const saved={...settings};if(!['selection','selectedBounds'].includes(saved.area))delete saved.selectedIds;if(saved.area!=='display')delete saved.displayBounds;if(JSON.stringify(doc.resources.plot)===JSON.stringify(saved))return;doc.checkpoint();doc.resources.plot=saved;changed();}
   });
+  window.RasmPlotAdvanced.mount({getDocument:()=>doc,log,download,pickWindow:callback=>{setTool('id');plotWindowPick={callback,points:[]};},commit:patch=>{const next=C.Document.parse(doc.serialize());Object.assign(next.resources,patch);if(next.serialize()===doc.serialize())return;doc.checkpoint();doc.resources=next.resources;changed();}});
   updateLayers();
   resize();
   prompt();

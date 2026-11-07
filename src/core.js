@@ -56,7 +56,7 @@
     return { name: string(get(raw, 'name'), 255, 'layer name', false), color: color(get(raw, 'color', '#e5edf5'), false),
       visible: bool(get(raw, 'visible', true), 'layer visibility'), locked: bool(get(raw, 'locked', false), 'layer lock') };
   }
-  const COMPOUND_TYPES = new Set(['hatch','region','block','spline','leader']);
+  const COMPOUND_TYPES = new Set(['hatch','region','block','spline','leader','polyline','plotViewport']);
   function jsonData(value, depth = 0, budget = {nodes:0}, path = new Set()) {
     requireValue(depth <= 32 && ++budget.nodes <= 2000000, 'Metadata exceeds complexity limit');
     if(value===null||typeof value==='boolean')return value;

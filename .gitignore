@@ -6,3 +6,6 @@ delivery/
 dist/RasmCAD-Advanced.html
 vendor/libredwg/wasm/libredwg-web.wasm
 tests/fixtures/
+
+vendor/dwg-writer/*.wasm
+vendor/dwg-writer/*.wasm.gz

@@ -1,0 +1,145 @@
+{
+  "version": "0.9-dev",
+  "date": "2026-11-07",
+  "branch": "codex/ten-workflows",
+  "htmlBytes": 6442898,
+  "htmlSha256": "bf16cf5adb095a04465b134267325d4525debb21de089ebd9a7c5b6f55bb032d",
+  "focusedNodeSuites": [
+    {
+      "suite": "core",
+      "status": "PASS",
+      "summary": "RESULT PASS: 13 groups passed; 0 failed"
+    },
+    {
+      "suite": "core-v07",
+      "status": "PASS",
+      "summary": "RESULT PASS: 15 core v0.7 groups"
+    },
+    {
+      "suite": "advanced",
+      "status": "PASS",
+      "summary": "RESULT PASS: 21 advanced checks"
+    },
+    {
+      "suite": "advanced-edit-v07",
+      "status": "PASS",
+      "summary": "Advanced edit v0.7: 21 groups passed."
+    },
+    {
+      "suite": "blocks-v07",
+      "status": "PASS",
+      "summary": "Blocks v0.7: 25 groups passed."
+    },
+    {
+      "suite": "hatch-v07",
+      "status": "PASS",
+      "summary": "PASS 15 hatch/region groups (727 assertions)"
+    },
+    {
+      "suite": "selection",
+      "status": "PASS",
+      "summary": "PASS: 376 geometric selection checks"
+    },
+    {
+      "suite": "snaps-v07",
+      "status": "PASS",
+      "summary": "Snap v0.7: 19 groups passed."
+    },
+    {
+      "suite": "depth-core",
+      "status": "PASS",
+      "summary": "Core arc selection: 2 regression checks passed."
+    },
+    {
+      "suite": "depth-geometry",
+      "status": "PASS",
+      "summary": "Depth geometry: 18 checks passed."
+    },
+    {
+      "suite": "depth-dimensions",
+      "status": "PASS",
+      "summary": "Dimension depth: 9/9 checks passed."
+    },
+    {
+      "suite": "depth-save",
+      "status": "PASS",
+      "summary": "Save formats: 26 checks passed."
+    },
+    {
+      "suite": "depth-dwg",
+      "status": "PASS",
+      "summary": "PASS 4 DWG capability checks: honest Save As status, explicit refusal, no unverified auto-enable, actual bundled runtime inspection"
+    },
+    {
+      "suite": "curve-polyline",
+      "status": "PASS",
+      "summary": "Curved polyline: 18 groups passed."
+    },
+    {
+      "suite": "print-layouts",
+      "status": "PASS",
+      "summary": "Advanced layouts: 7 groups passed."
+    },
+    {
+      "suite": "ten-dimension-associations",
+      "status": "PASS",
+      "summary": "Associative dimensions: 13 groups passed."
+    },
+    {
+      "suite": "ten-selection-snap",
+      "status": "PASS",
+      "summary": "Selection/snap depth: 21 groups passed."
+    },
+    {
+      "suite": "ten-dwg-recovery",
+      "status": "PASS",
+      "summary": "DWG and recovery: 7 groups passed."
+    }
+  ],
+  "browser": {
+    "htmlSha256": "bf16cf5adb095a04465b134267325d4525debb21de089ebd9a7c5b6f55bb032d",
+    "results": [
+      {
+        "name": "Fence, polygon and QuickSelect use actual pointer selection",
+        "status": "PASS"
+      },
+      {
+        "name": "TRIM fence commits several targets and local Undo restores the group",
+        "status": "PASS"
+      },
+      {
+        "name": "PLINE Arc and physical width persist, explode and Undo",
+        "status": "PASS"
+      },
+      {
+        "name": "DIMASSOC follows source movement and Undo",
+        "status": "PASS"
+      },
+      {
+        "name": "Named page setup, independent viewport layout and batch PDF",
+        "status": "PASS"
+      },
+      {
+        "name": "Layout for a single horizontal line restores checkbox settings",
+        "status": "PASS"
+      },
+      {
+        "name": "Genuine offline DWG2000 download and readback with Arabic text",
+        "status": "PASS"
+      },
+      {
+        "name": "Local recovery is opt-in, persists and restores native model",
+        "status": "PASS"
+      }
+    ],
+    "errors": [],
+    "external": []
+  },
+  "fileProtocolSmoke": "Blocked before page load by managed browser policy ERR_BLOCKED_BY_ADMINISTRATOR",
+  "notVerified": [
+    "Windows Edge",
+    "Autodesk AutoCAD",
+    "physical printer",
+    "complete DWG source fidelity"
+  ]
+}

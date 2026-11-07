@@ -7,13 +7,15 @@ function check(ok,message){if(!ok)throw Error(message);}
 function textual(e){return e.kind==='text'||e.kind==='dimension';}
 function sourceEntity(doc,id){const e=doc.entities.find(e=>e.id===id);check(e,'MATCHPROP source no longer exists');check(doc.layer(e.layer)?.visible,'MATCHPROP source layer is hidden');return e;}
 function matchProperties(doc,sourceId,targetIds,options={}){
- check(options&&typeof options==='object'&&!Array.isArray(options),'Invalid MATCHPROP options');for(const key of Object.keys(options))check(key==='fields','Unsupported MATCHPROP option: '+key);
+ check(options&&typeof options==='object'&&!Array.isArray(options),'Invalid MATCHPROP options');for(const key of Object.keys(options))check(['fields','includeChildren'].includes(key),'Unsupported MATCHPROP option: '+key);check(options.includeChildren===undefined||typeof options.includeChildren==='boolean','includeChildren must be boolean');
  const selected=options.fields===undefined?defaults:options.fields;check(Array.isArray(selected)&&selected.length>0,'Choose at least one property to match');check(selected.every(f=>fields.includes(f)),'Unsupported MATCHPROP field');
  check(Array.isArray(targetIds)&&targetIds.length>0,'Choose at least one MATCHPROP target');const before=doc.serialize(),working=C.Document.parse(before),source=sourceEntity(working,sourceId),ids=[...new Set(targetIds)].filter(id=>id!==sourceId);
  // Validate every target and destination layer before making any real change.
  const targets=ids.map(id=>{const e=working.entities.find(e=>e.id===id);check(e,'MATCHPROP target no longer exists');const layer=working.layer(e.layer);check(layer?.visible&&!layer.locked,'MATCHPROP target layer is hidden or locked');return e;});
  if(selected.includes('layer')){const layer=working.layer(source.layer);check(layer?.visible&&!layer.locked,'MATCHPROP destination layer is hidden or locked');}
- for(const target of targets){
+ const affected=targets.slice();
+ if(options.includeChildren){const visit=e=>{if(e.kind==='compound')for(const child of e.parts||[]){const layer=working.layer(child.layer);check(layer?.visible&&!layer.locked,'MATCHPROP compound child layer is hidden or locked');affected.push(child);visit(child);}};for(const target of targets)visit(target);}
+ for(const target of affected){
   let changedDimensionStyle=false;
   for(const field of new Set(selected)){
    const compatible=common.includes(field)||field==='textHeight'&&textual(source)&&textual(target)||dimension.includes(field)&&source.kind==='dimension'&&target.kind==='dimension';
