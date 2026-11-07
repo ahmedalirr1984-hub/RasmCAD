@@ -4,7 +4,7 @@ root.RasmAdvancedUI={mount(ctx){
  const C=root.RasmCore,A=root.RasmAdvancedEdit,H=root.RasmHatch,B=root.RasmBlocks,D=root.RasmDimensions,N=root.RasmCommands;
  let state=null,blockSession=null;
  const snapModes=new Set(['endpoint','midpoint','center','quadrant','intersection']);
- const names=['STRETCH','BREAK','LENGTHEN','ALIGN','PEDIT','SPLINEDIT','SPLINE','OVERKILL','EXPLODE','EXPLOAD','HATCH','HATCHEDIT','BOUNDARY','REGION','BLOCK','INSERT','WBLOCK','BEDIT','REFEDIT','BCLOSE','ATTDEF','ATTEDIT','ATTSYNC','DIMSTYLE','DIMCONTINUE','DIMBASELINE','DIMORDINATE','DIMEDIT','QLEADER','MLEADER','MLEADEREDIT','OSNAPSET'];
+ const names=['STRETCH','BREAK','LENGTHEN','ALIGN','PEDIT','SPLINEDIT','SPLINE','OVERKILL','EXPLODE','EXPLOAD','HATCH','HATCHEDIT','BOUNDARY','REGION','BLOCK','INSERT','WBLOCK','BEDIT','REFEDIT','BCLOSE','ATTDEF','ATTEDIT','ATTSYNC','DIMSTYLE','DIMASSOC','DIMCONTINUE','DIMBASELINE','DIMORDINATE','DIMEDIT','QLEADER','MLEADER','MLEADEREDIT','OSNAPSET'];
  const doc=()=>ctx.getDocument(),ids=()=>ctx.getSelection(),clone=x=>JSON.parse(JSON.stringify(x));
  const number=(v,label)=>{const n=N.number(v);if(n===null)throw Error('Enter a valid '+label);return n;};
  const done=(result,message)=>{state=null;ctx.changed(Array.isArray(result)?result:[],message||'Command completed.');};
@@ -68,7 +68,7 @@ root.RasmAdvancedUI={mount(ctx){
  function start(name,rest){
   state=null;ctx.enter();name=name==='EXPLOAD'?'EXPLODE':name;
   if(name==='OSNAPSET'){
-   const fields=['endpoint','midpoint','center','quadrant','intersection','perpendicular','tangent','nearest'].map(k=>({name:k,label:k,type:'checkbox',value:snapModes.has(k)}));
+   const fields=root.RasmSnaps.modes.map(k=>({name:k,label:k,type:'checkbox',value:snapModes.has(k)}));
    dialog('Object snap modes',fields,v=>{snapModes.clear();for(const k of Object.keys(v))if(v[k])snapModes.add(k);ctx.log('Object snap modes: '+[...snapModes].join(', '));});return;
   }
   if(name==='STRETCH'){stage(name,'STRETCH: first crossing-window corner, then opposite corner; then base and destination.',4,p=>{const selected=ctx.crossing(p[0],p[1]);done(A.stretch(doc(),selected,p[0],p[1],{x:p[3].x-p[2].x,y:p[3].y-p[2].y}),'Vertices inside the crossing window stretched.');});return;}
@@ -76,13 +76,24 @@ root.RasmAdvancedUI={mount(ctx){
   if(name==='LENGTHEN'){acquire(name,()=>{const e=selectedOne();dialog('LENGTHEN',[{name:'mode',label:'Mode',options:['TOTAL','DELTA','PERCENT'],value:'TOTAL'},{name:'value',label:'Length / change / percent',type:'number',value:100}],v=>stage(name,'LENGTHEN: pick near the endpoint to change.',1,p=>done(A.lengthen(doc(),e.id,v.mode,number(v.value,'length'),p[0]))));});return;}
   if(name==='ALIGN'){acquire(name,()=>dialog('ALIGN',[{name:'scale',label:'Scale uniformly to target length',type:'checkbox'}],v=>stage(name,'ALIGN: source point 1, destination 1, source point 2, destination 2.',4,p=>done(A.align(doc(),ids(),p[0],p[2],p[1],p[3],v.scale)))));return;}
   if(name==='PEDIT'||name==='SPLINEDIT'){
-   acquire(name,()=>{const spline=name==='SPLINEDIT';const actions=spline?['VERTEX','INSERT','DELETE','REVERSE','CLOSE','OPEN','TENSION']:['CLOSE','OPEN','REVERSE','JOIN','VERTEX','INSERT','DELETE'];
-    const apply=(action,value)=>{if(spline)done(A.splineEdit(doc(),selectedOne().id,action,value));else done(A.pedit(doc(),ids(),action,value));};
+   acquire(name,()=>{const spline=name==='SPLINEDIT',P=root.RasmCurvePolyline,curved=!spline&&ids().some(id=>P?.isCurve(doc().entities.find(e=>e.id===id)));
+    if(curved)selectedOne();
+    const actions=spline?['VERTEX','INSERT','DELETE','REVERSE','CLOSE','OPEN','TENSION']:curved?['WIDTH','OPEN','CLOSE','REVERSE','VERTEX','SEGMENT','SEGWIDTH']:['CLOSE','OPEN','REVERSE','JOIN','VERTEX','INSERT','DELETE','CONVERT','WIDTH','SEGMENT','SEGWIDTH'];
+    const apply=(action,value)=>{if(spline)done(A.splineEdit(doc(),selectedOne().id,action,value));else if(curved||['CONVERT','WIDTH','SEGMENT','SEGWIDTH'].includes(action)){if(!P)throw Error('Curved polyline module is unavailable');done(P.edit(doc(),selectedOne().id,action,value),'Polyline geometry updated.');}else done(A.pedit(doc(),ids(),action,value));};
     if(rest){const [rawAction,...args]=rest.split(/\s+/),action=rawAction.toUpperCase();let value;
      const nums=args.join(' ').split(/[,\s]+/).filter(Boolean).map(x=>number(x,'option value'));
      if(['VERTEX','INSERT'].includes(action)){if(nums.length!==3)throw Error('Enter index x y after the operation.');value={index:nums[0],point:{x:nums[1],y:nums[2]}};}
+     else if(action==='WIDTH'){if(nums.length<1||nums.length>2)throw Error('PEDIT WIDTH: start width and optional end width in drawing units.');value=nums.length===1?nums[0]:{start:nums[0],end:nums[1]};}
+     else if(action==='SEGMENT'){if(nums.length===2)value={index:nums[0],bulge:nums[1]};else if(nums.length===3)value={index:nums[0],through:{x:nums[1],y:nums[2]}};else throw Error('PEDIT SEGMENT: index bulge, or index throughX throughY.');}
+     else if(action==='SEGWIDTH'){if(nums.length!==3)throw Error('PEDIT SEGWIDTH: index startWidth endWidth.');value={index:nums[0],start:nums[1],end:nums[2]};}
      else if(nums.length)value=nums[0];apply(action,value);return;}
-    dialog(name,[{name:'action',label:'Operation',options:actions},{name:'index',label:'Vertex index (zero based)',type:'number',value:0},{name:'x',label:'New X',type:'number',value:0},{name:'y',label:'New Y',type:'number',value:0},{name:'tension',label:'Spline tension',type:'number',value:.5}],v=>{let value;if(['VERTEX','INSERT'].includes(v.action))value={index:number(v.index,'index'),point:{x:number(v.x,'X'),y:number(v.y,'Y')}};else if(v.action==='DELETE')value=number(v.index,'index');else if(v.action==='TENSION')value=number(v.tension,'tension');apply(v.action,value);});
+    dialog(name,[{name:'action',label:'Operation',options:actions},{name:'index',label:'Vertex / segment index (zero based)',type:'number',value:0},{name:'x',label:'New vertex / arc-through X',type:'number',value:0},{name:'y',label:'New vertex / arc-through Y',type:'number',value:0},{name:'tension',label:'Spline tension',type:'number',value:.5},{name:'widthStart',label:'Start width (drawing units)',type:'number',value:0},{name:'widthEnd',label:'End width (drawing units)',type:'number',value:0},{name:'bulge',label:'Arc bulge (0 = straight)',type:'number',value:0},{name:'through',label:'SEGMENT: use through point instead of bulge',type:'checkbox'}],v=>{let value;
+     if(['VERTEX','INSERT'].includes(v.action))value={index:number(v.index,'index'),point:{x:number(v.x,'X'),y:number(v.y,'Y')}};
+     else if(v.action==='DELETE')value=number(v.index,'index');else if(v.action==='TENSION')value=number(v.tension,'tension');
+     else if(v.action==='WIDTH')value={start:number(v.widthStart,'start width'),end:number(v.widthEnd,'end width')};
+     else if(v.action==='SEGWIDTH')value={index:number(v.index,'segment index'),start:number(v.widthStart,'start width'),end:number(v.widthEnd,'end width')};
+     else if(v.action==='SEGMENT')value=v.through?{index:number(v.index,'segment index'),through:{x:number(v.x,'through X'),y:number(v.y,'through Y')}}:{index:number(v.index,'segment index'),bulge:number(v.bulge,'bulge')};apply(v.action,value);
+    });
    });return;
   }
   if(name==='SPLINE'){stage(name,'SPLINE: specify control points; Enter finishes (at least 2).',Infinity,null,{finish:p=>{if(p.length<2)throw Error('Specify at least two spline points.');ctx.append(A.createSpline(p,{tension:.5}));done([],'Editable spline created.');}});return;}
@@ -123,6 +134,16 @@ root.RasmAdvancedUI={mount(ctx){
    if(['SETCURRENT','DELETE','RENAME','APPLY','LIST'].includes(action.toUpperCase())){const result=D.style(doc(),action.toUpperCase(),styleName,{ids:ids()});ctx.changed(ids(),typeof result==='object'?JSON.stringify(result):'Dimension style updated.');return;}
    dimStyleForm(rest||doc().resources?.currentDimStyle||'Standard');return;
   }
+  if(name==='DIMASSOC'){
+   const action=rest.trim().toUpperCase();
+   if(action==='STATUS'){ctx.log(JSON.stringify(D.associationStatus(doc())));return;}
+   if(action==='REMOVE'||action==='DETACH'){const chosen=ids().filter(id=>doc().entities.find(e=>e.id===id)?.kind==='dimension');done(D.detach(doc(),chosen),'Selected dimension associations removed.');return;}
+   if(action)throw Error('DIMASSOC supports bind (no option), STATUS or REMOVE.');
+   acquire(name,()=>{const chosen=doc().entities.filter(e=>ids().includes(e.id)),dimensions=chosen.filter(e=>e.kind==='dimension'),sources=chosen.filter(e=>['line','circle'].includes(e.kind));
+    if(dimensions.length!==1||sources.length!==1||chosen.length!==2)throw Error('Select exactly one dimension and its LINE or CIRCLE source, then Enter.');
+    done(D.bind(doc(),dimensions[0].id,{entityId:sources[0].id}),'Dimension linked to source geometry. Changes follow the source; deleted sources display [ORPHAN].');
+   });return;
+  }
   if(name==='DIMCONTINUE'||name==='DIMBASELINE'){
    const tokens=rest.trim().split(/\s+/).filter(Boolean),automatic=tokens[0]?.toUpperCase()==='AUTO';
    if(tokens.length&&(!automatic||tokens.length>2||name==='DIMCONTINUE'&&tokens.length>1))throw Error(name+': use no options for two-point placement, or AUTO'+(name==='DIMBASELINE'?' [spacing]':''));
@@ -151,7 +172,7 @@ root.RasmAdvancedUI={mount(ctx){
   if(state.stage==='select'){if(['ALL','A'].includes(split.name)){ctx.selectAll();return true;}throw Error('Select objects, then Enter.');}
   const point=ctx.parsePoint?ctx.parsePoint(raw,state.points.at(-1)||null):N.parsePoint(raw,state.points.at(-1)||null);if(point){if(ctx.acceptPoint)ctx.acceptPoint(point);else accept(point);return true;}throw Error('This command expects a point as x,y, or Esc to cancel.');
  }
- function addToolbar(){const group=document.createElement('details');group.className='tool-group';const summary=document.createElement('summary');summary.textContent='Advanced 2D';group.append(summary);const grid=document.createElement('div');grid.className='tool-grid';for(const name of ['STRETCH','BREAK','LENGTHEN','ALIGN','PEDIT','SPLINE','SPLINEDIT','OVERKILL','EXPLODE','HATCH','HATCHEDIT','BOUNDARY','REGION','BLOCK','INSERT','BEDIT','REFEDIT','WBLOCK','ATTDEF','ATTEDIT','DIMSTYLE','DIMCONTINUE','DIMBASELINE','DIMORDINATE','DIMEDIT','QLEADER','MLEADER','MLEADEREDIT','OSNAPSET']){const b=document.createElement('button');b.type='button';b.dataset.advanced=name;b.textContent=name;b.title=name;b.onclick=()=>run(()=>start(name,''));grid.append(b);}group.append(grid);document.querySelector('.tools').append(group);}
+ function addToolbar(){const group=document.createElement('details');group.className='tool-group';const summary=document.createElement('summary');summary.textContent='Advanced 2D';group.append(summary);const grid=document.createElement('div');grid.className='tool-grid';for(const name of ['STRETCH','BREAK','LENGTHEN','ALIGN','PEDIT','SPLINE','SPLINEDIT','OVERKILL','EXPLODE','HATCH','HATCHEDIT','BOUNDARY','REGION','BLOCK','INSERT','BEDIT','REFEDIT','WBLOCK','ATTDEF','ATTEDIT','DIMSTYLE','DIMASSOC','DIMCONTINUE','DIMBASELINE','DIMORDINATE','DIMEDIT','QLEADER','MLEADER','MLEADEREDIT','OSNAPSET']){const b=document.createElement('button');b.type='button';b.dataset.advanced=name;b.textContent=name;b.title=name;b.onclick=()=>run(()=>start(name,''));grid.append(b);}group.append(grid);document.querySelector('.tools').append(group);}
  addToolbar();
  return{get textInput(){return state?.stage==='leadertext';},execute,acceptPoint:accept,finish,cancel(){state=null;refresh();},get active(){return !!state;},get acquiring(){return state?.stage==='select';},get prompt(){return state?.prompt||'';},get name(){return state?.name||'';},get basePoint(){return state?.basePoint||state?.points.at(-1)||null;},get snapModes(){return [...snapModes];},get blockEditing(){return !!blockSession;},guardReplace(){if(blockSession){ctx.log('Save or discard the block edit with BCLOSE before opening another drawing.',true);return false;}return true;},preview(){return state?.points.length>1?[{kind:'polyline',points:state.points,closed:false}]:[];},dialog};
 }};

@@ -1,33 +1,39 @@
-# RasmCAD Advanced 0.8-dev
+# RasmCAD Advanced 0.9-dev
 
-**Command depth development preview:** current work is on `codex/command-depth`.
-See [the20-workflow guide](docs/COMMAND-DEPTH.md), [Arabic trial instructions](docs/TRY-0.8-AR.md),
-and [verification](docs/DEPTH-RESULTS.md). Main has not been updated. The source
-keeps Canvas2D and native format1. Genuine DWG writing remains unavailable.
+Current development branch: **`codex/ten-workflows`**. Main is unchanged.
+This cycle adds stronger selection and snaps, curved/width polylines, grouped
+Trim/Extend, compound property matching, linked dimensions, named print setups,
+independent plot viewports, batch PDF, genuine experimental DWG2000 export and
+optional local recovery. These additions do not complete every AutoCAD option.
 
-[Download the ready-to-open0.8-dev package](https://drive.google.com/file/d/1n4EJ1N2uK65xixFDjTVMO-1LU1PF_OQH/view?usp=drivesdk).
-Extract it andopen `RasmCAD-Advanced.html`;noPython/Node installation isneeded.
-The complete currentapplication source is on thisbranch. Validation:44suites
-pass;DWGencoding,fileprotocol/Edge andphysicalprinter limits are stated inresults.
+Read the [ten-workflow guide](docs/TEN-WORKFLOWS.md),
+[Arabic trial instructions](docs/TRY-0.9-AR.md), and
+[current test results](TEST_RESULTS.md). The application runs locally in a
+current Edge or Chrome browser without installing Python or Node.js.
+
+**DWG Save As now writes real R2000/AC1015 files**, with geometry readback before
+release of the download. This is flattened 2D exchange, not lossless native DWG
+editing. Modern DWG writing is unavailable; preserve an editable `.rasm.json`
+project too. See [DWG writing scope](docs/DWG-WRITING.md).
 
 ## GitHub download
 
-Choose **Code → Download ZIP**, extract the repository, then double-click
+Choose branch **`codex/ten-workflows`**, then **Code → Download ZIP**, extract the repository, then double-click
 `restore-release.cmd` on Windows. It joins the numbered files in `dist/parts`,
 checks that the release is present, and opens `dist/RasmCAD-Advanced.html`.
 The program itself needs only Edge or Chrome. The complete prior vendor/source bundle remains available in the
 [0.7 delivery on Google Drive](https://drive.google.com/file/d/1SJnl4HztNggnzmd_pVEGWNP8ZyvfWRCW/view?usp=drivesdk).
 
 Developers can run `node restore-release.cjs` to join and SHA-256-check the
-HTML, then `node restore-vendor.cjs` to extract the bundled DWG engine and
+HTML, then `node restore-vendor.cjs` to extract the bundled DWG engines and
 `node build.cjs` to rebuild. The exact upstream LibreDWG source archive,
 font source, and full test fixtures are in the complete Google Drive delivery.
 
-Command options,selective property matching,plotting andSaveAs — development preview.
+Selection, command depth, scaled plotting and Save As — development preview.
 
 An independent, English-language 2D CAD application that runs locally in a modern Edge or Chrome browser. Open `RasmCAD-Advanced.html` after extracting the ZIP. No Python, installer, administrator access, or unsigned EXE is required. The HTML includes its DWG WebAssembly engine and does not upload drawings or fetch conversion services.
 
-Save your current project, close earlier application tabs, extract the new archive into a new folder, and open its HTML. Check that **0.8-dev** appears beside the application name. Drawings are stored only when you download a project.
+Save your current project, close earlier application tabs, extract the new archive into a new folder, and open its HTML. Check that **0.9-dev** appears beside the application name. Download a project to keep an editable disk copy. Optional local recovery stores a limited number of browser snapshots when you enable it.
 
 This release **does not meet or claim 90% coverage of AutoCAD 2008**. `FEATURES.md` records the implemented functionality and significant gaps. `COMMAND_WORDS.txt` lists registered words, including aliases; aliases are not independent CAD features or proof of percentage coverage.
 
@@ -36,9 +42,9 @@ See **UPGRADE_0.7.md** for the new snap/editing/hatch/block/attribute/dimension 
 ## Open and save
 
 - **Open** accepts the formats listed below. The file content is checked; an extension alone does not make an unsupported file readable. Read the import report before relying on an imported drawing.
-- **Save project** downloads an editable `.rasm.json`. It does not overwrite a source DWG, save automatically, or save a DWG file.
-- **Export DXF** writes supported geometry as ASCII DXF R2007, using unitless drawing units. Native dimensions are exported as visible lines, arcs and text; DXF dimension associativity is not retained.
-- **Export PNG** saves the current view. **Plot vector PDF** downloads vectors at a chosen physical paper size, drawing-unit conversion, scale1:N and plot window. Print that PDF at Actual size/100%; layouts and CTB/STB remain unsupported.
+- **Save project** downloads an editable `.rasm.json`. Where the browser exposes a file picker, Save can reuse a native project file selected with Save As. DWG exchange is a separate Save As output; opening a DWG does not overwrite the original file.
+- **Save As** offers native project, ASCII DXF 2007/2010/2013/2018–2024 and experimental DWG R2000 exchange. CAD exports flatten supported geometry; native dimensions, block definitions, hatch metadata and dimension associativity are not retained. DWG true colors map to the nearest indexed ACI color, and layer names must fit the Arabic/Latin Windows-1256 codepage. The integrity/loss report describes these changes.
+- **Export PNG** saves the current view. **Plot vector PDF** downloads vectors at a chosen physical paper size, drawing-unit conversion, scale1:N and plot window. Named page setups, custom plot layouts with independent viewport scales, and multi-sheet vector PDF are available. Print the PDF at Actual size/100%; AutoCAD CTB/STB files and full paper-space editing remain unsupported.
 
 | Open format | Supported use and limits |
 | --- | --- |
@@ -56,7 +62,7 @@ The tested DWG samples have the `AC1032` signature (DWG 2018 format), which is a
 1. Use **Open** to import the drawing, then review the import report and choose **Continue drawing**. Choose **Line** or another drawing tool to add supported geometry.
 2. New drawings start on visible, unlocked layer `0`. If an opened drawing's current layer is hidden or locked, the application prefers the source current layer when writable, otherwise selects a writable layer or creates a separate visible, unlocked `RasmCAD-Edit` layer (with a unique suffix when needed). It preserves the original layer states.
 3. Select an existing object and use Move, Copy, Properties or another supported edit. Objects intentionally stored on locked layers stay protected. Use **Unlock visible layers** in the Layers panel or import report to unlock the visible layers for editing; this is an undoable document change. Hidden layers are not shown or unlocked by this action.
-4. Save the editable result with **Save project**, or use **Export DXF** for the supported geometry to reopen in AutoCAD. Saving a modified DWG file is not available.
+4. Save the editable result with **Save project**, or use **Export DXF** for the supported geometry to reopen in AutoCAD. Use **Save As → DWG R2000** for experimental flattened DWG exchange, or DXF. The native project preserves the richer editable RasmCAD data.
 
 Version 0.6 corrects a DWG reader metadata error that could incorrectly classify open layers as locked. It also corrects imported indexed layer/entity colors using the full 256-entry ACI palette, while retaining explicit truecolor and ByLayer behavior, including DXF layer truecolor. These fixes remove specific editing and appearance errors; they do not make every AutoCAD entity editable or establish a visually identical import.
 
@@ -66,9 +72,9 @@ Choose a tool, then follow the green English prompt. Coordinates support `100,20
 
 | Tool | Workflow and supported geometry |
 | --- | --- |
-| Line, polyline, rectangle, circle, arc, text | Points or command coordinates. Circle accepts a numeric radius, `D` for diameter after the center, or `2P`/`3P` before picking. Arc uses center/start/end direction CCW. Text input is plain text. |
+| Line, polyline, rectangle, circle, arc, text | Points or command coordinates. Native PLINE supports alternating straight and three-point arc segments, physical start/end widths, and PEDIT segment/width changes. Circle accepts a numeric radius, `D` for diameter after the center, or `2P`/`3P` before picking. Arc uses center/start/end direction CCW. Text input is plain text. |
 | Move / Copy / Rotate / Scale | Preselect objects, or start the command and select when prompted, then press Enter to confirm. Supply base/destination points, or base plus numeric angle/factor. |
-| Trim / Extend | Click the portion/end to edit. Preselected objects act as boundaries; with no preselection all other visible supported geometry are boundaries. Lines, polylines, circles/arcs have documented endpoint/closed-path limits. |
+| Trim / Extend | Click the portion/end to edit. Preselected objects act as boundaries; with no preselection all other visible supported geometry are boundaries. Fence/Crossing target groups use one Undo transaction; unsupported or no-cut targets are reported. Lines, polylines, circles/arcs have documented endpoint/closed-path limits. |
 | Offset | Select line/polyline/circle/arc, choose Offset, enter a positive distance, then click the side. Polyline joins are mitered; collapsed or self-intersecting offsets are rejected. |
 | Fillet | Enter radius, then click retained sides of two LINE entities. Creates trimmed lines and a tangent arc. Radius zero joins at their intersection. Parallel lines and oversized radii are rejected. |
 | Chamfer | Enter `distance1,distance2`, then click retained sides of two LINE entities. Creates trimmed lines and a chamfer line. |
@@ -78,7 +84,7 @@ Choose a tool, then follow the green English prompt. Coordinates support `100,20
 | Explode / Join | Explode polylines or native dimensions. Dimension arrow outlines and per-primitive colors are kept; filled arrow areas are retained as separate SOLID entities by the application EXPLODE workflow. Join connected open lines/polylines on one layer into a polyline. |
 | Distance / Angle / Area | Distance: two points. Angle: arm point, vertex, arm point. Area: click a circle/closed polyline, or enter polygon vertices then Enter. Outputs area and perimeter in decimal drawing units. |
 | Dimensions | Aligned, horizontal/vertical linear, angular, radius and diameter. Angular: arm, vertex, arm, label position. Radius/diameter: select circle/arc then label location. `DIMTXT 12` sets height. `DIMVERTICAL` chooses vertical linear dimensions. |
-| Properties / Match properties | Change selected objects' layer, ByLayer/explicit color, width, text/label and text height in the inspector. Only changed fields are applied to a mixed selection. `MATCHPROP` picks source then target for style copying. |
+| Properties / Match properties | Change selected objects' layer, ByLayer/explicit color, width, text/label and text height in the inspector. Only changed fields are applied to a mixed selection. `MATCHPROP` picks a source and repeated targets; SETTINGS chooses fields and can include explicit styles inside compound children. |
 | Layers / Undo / Redo / view | Layer color, visibility and lock; bounded undo/redo; grid, object snap, ortho, zoom, pan, extents. |
 
 ## Finish a drawing and select objects
@@ -109,7 +115,7 @@ Select an existing dimension and expand **Object properties**. Edit text height 
 
 Click **Apply changed properties** to update the selected objects. Unchanged fields retain each object's values, which matters when you select dimensions with different styles. Text / dimension override accepts `<>` for the measured value: `L=<> mm` keeps the numeric measurement inside a custom label. A literal label replaces the displayed measurement; it does not change the geometry.
 
-**Use as dimension defaults** copies the selected dimension settings for new annotations in the current browser session. Session defaults reset when the page is reloaded; the styles of saved dimension objects remain in the project. It does not restyle existing dimensions. Save an editable project to retain dimensions and their styles. Dimensions still use independent measurement points; this is not an associative constraint or a complete AutoCAD DIMSTYLE implementation. Imported source dimension styles are not fully reproduced.
+**Use as dimension defaults** copies the selected dimension settings for new annotations in the current browser session. Session defaults reset when the page is reloaded; the styles of saved dimension objects remain in the project. It does not restyle existing dimensions. Save an editable project to retain dimensions and their styles. Dimensions are independent until explicitly linked with DIMASSOC. Supported native linear dimensions can follow line endpoints; radius/diameter dimensions can follow a circle. Deleted or invalid sources display [ORPHAN]. This is not a general constraint system or complete AutoCAD DIMSTYLE implementation; imported source dimension styles and associations are not fully reproduced.
 
 ## Import fidelity
 
@@ -123,9 +129,16 @@ No operating-system protection or organization policy is changed. A managed comp
 
 ## Source, licensing and rebuild
 
-The combined advanced distribution is GPL-3.0-or-later because it includes LibreDWG. The original MIT notices and dxf-parser MIT license are retained; see `THIRD_PARTY.md`. The exact upstream v0.8.4 source archive, vendor package, local integration changes, application source and tests are supplied in `Source`. Source is provided with no warranty.
+The combined advanced distribution is GPL-3.0-or-later because it includes LibreDWG. The original MIT notices and dxf-parser MIT license are retained; see `THIRD_PARTY.md`. Application source, integration changes and tests are in this branch. The exact upstream v0.8.4 source archive and complete vendor/font/fixture bundle are in the linked 0.7 source delivery. The new writer build is documented in `vendor/dwg-writer/BUILD.md`. Source is provided with no warranty.
 
-Development commands (not needed by app users):
+Focused 0.9 verification (18 Node suites and eight Chromium workflows; see `TEST_RESULTS.md`):
+
+```sh
+node tests/ten-focused.cjs
+node tests/ten-workflows-browser.test.cjs
+```
+
+Other development commands (not needed by app users):
 
 ```sh
 node build.cjs

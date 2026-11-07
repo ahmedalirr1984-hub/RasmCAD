@@ -40,7 +40,7 @@
     const s = angle(arc.endAngle - arc.startAngle);
     return s < 1e-12 ? TAU : s;
   }
-  function onArc(a, arc) { return span(arc) >= TAU - 1e-12 || angle(a - arc.startAngle) <= span(arc) + 1e-11; }
+  function onArc(a, arc) { const d=angle(a-arc.startAngle);return span(arc)>=TAU-1e-12||d<=span(arc)+1e-11||TAU-d<=1e-11; }
   function arcPoint(arc, a) { return { x: arc.center.x + arc.radius * Math.cos(a), y: arc.center.y + arc.radius * Math.sin(a) }; }
   function segmentDistance(p, a, b) {
     const d = sub(b, a), length = Math.hypot(d.x, d.y);
@@ -226,5 +226,73 @@
     if (measurer !== null && typeof measurer !== 'function') throw new TypeError('Text measurer must be a function or null');
     textMeasurer = measurer;
   }
-  return Object.freeze({ pick, candidates, windowSelect, distanceToEntity, entityBounds, textQuad, setTextMeasurer });
+  // Polygon/fence tests use analytic segment and circular-arc intersections.
+  // Rebuild from current document geometry on each operation: there is no
+  // revision cache which could retain stale grips or imported/edited shapes.
+  const cross=(a,b)=>a.x*b.y-a.y*b.x,dot=(a,b)=>a.x*b.x+a.y*b.y;
+  function pathPoints(points,min,label){
+    if(!Array.isArray(points)||points.length<min||points.length>4096||!points.every(finitePoint))throw Error(label+' needs '+min+'..4096 finite points');
+    return points.map(p=>({x:p.x,y:p.y}));
+  }
+  function segmentCuts(a,b,c,d){
+    const u=sub(b,a),v=sub(d,c),w=sub(c,a),den=cross(u,v),eps=epsilon(a,b,c,d),lu=Math.hypot(u.x,u.y),lv=Math.hypot(v.x,v.y);
+    if(!lu)return segmentDistance(a,c,d)<=eps?[{point:a,t:0}]:[];
+    const error=Number.EPSILON*8*(Math.abs(u.x*v.y)+Math.abs(u.y*v.x));
+    if(Math.abs(den)<=error){
+      if(Math.abs(cross(w,u))/lu>eps)return[];
+      return[c,d].map(p=>({point:p,t:dot(sub(p,a),u)/(lu*lu)})).filter(q=>q.t>=-eps/lu&&q.t<=1+eps/lu)
+        .concat([a,b].filter(p=>segmentDistance(p,c,d)<=eps).map(p=>({point:p,t:dot(sub(p,a),u)/(lu*lu)})));
+    }
+    const t=cross(w,v)/den,s=cross(w,u)/den;
+    return t>=-eps/lu&&t<=1+eps/lu&&s>=-eps/Math.max(lv,eps)&&s<=1+eps/Math.max(lv,eps)?[{point:add(a,mul(u,Math.max(0,Math.min(1,t)))),t:Math.max(0,Math.min(1,t))}]:[];
+  }
+  function arcCuts(arc,a,b){
+    const d=sub(b,a),length=Math.hypot(d.x,d.y);if(!length)return arcDistance(a,arc)<=epsilon(a,arc.center)?[a]:[];
+    const u=mul(d,1/length),v=sub(arc.center,a),along=dot(v,u),perp=cross(v,u),eps=epsilon(a,b,arc.center);
+    let h2=arc.radius*arc.radius-perp*perp;if(h2<-eps*Math.max(1,arc.radius))return[];h2=Math.max(0,h2);
+    return[along-Math.sqrt(h2),along+Math.sqrt(h2)].filter(t=>t>=-eps&&t<=length+eps).map(t=>add(a,mul(u,t))).filter(p=>onArc(Math.atan2(p.y-arc.center.y,p.x-arc.center.x),arc));
+  }
+  function edges(poly){return poly.map((p,i)=>({a:p,b:poly[(i+1)%poly.length]}));}
+  function inPolygon(p,poly){return polygonDistance(p,poly)<=epsilon(p,...poly);}
+  function checkedPolygon(raw){
+    const p=pathPoints(raw,3,'Selection polygon');if(distance(p[0],p.at(-1))<=epsilon(p[0],p.at(-1)))p.pop();
+    if(p.length<3)throw Error('Selection polygon needs three distinct vertices');
+    const e=edges(p);for(const s of e)if(distance(s.a,s.b)<=epsilon(s.a,s.b))throw Error('Selection polygon has a zero-length edge');
+    for(let i=0;i<e.length;i++)for(let j=i+1;j<e.length;j++)if(j!==i+1&&!(i===0&&j===e.length-1)&&segmentCuts(e[i].a,e[i].b,e[j].a,e[j].b).length)throw Error('Selection polygon must not self-intersect');
+    const origin=p[0],area=e.reduce((n,s)=>n+cross(sub(s.a,origin),sub(s.b,origin)),0);if(Math.abs(area)<=epsilon(...p)**2)throw Error('Selection polygon has no area');return p;
+  }
+  function segmentInside(a,b,poly,pe){
+    if(!inPolygon(a,poly)||!inPolygon(b,poly))return false;
+    const ts=[0,1,...pe.flatMap(e=>segmentCuts(a,b,e.a,e.b).map(q=>q.t))].sort((x,y)=>x-y);
+    return ts.every((t,i)=>i===0||inPolygon(add(a,mul(sub(b,a),(t+ts[i-1])/2)),poly));
+  }
+  function arcInside(a,poly,pe){
+    const sweep=span(a),ts=[0,sweep];for(const e of pe)for(const q of arcCuts(a,e.a,e.b)){const t=angle(Math.atan2(q.y-a.center.y,q.x-a.center.x)-a.startAngle);if(t<=sweep+1e-10)ts.push(Math.min(t,sweep));}
+    ts.sort((x,y)=>x-y);return ts.every((t,i)=>inPolygon(arcPoint(a,a.startAngle+t),poly)&&(i===0||inPolygon(arcPoint(a,a.startAngle+(t+ts[i-1])/2),poly)));
+  }
+  function arcFenceDistance(a,f){
+    let best=Math.min(arcDistance(f.a,a),arcDistance(f.b,a),segmentDistance(arcPoint(a,a.startAngle),f.a,f.b),segmentDistance(arcPoint(a,a.endAngle),f.a,f.b));
+    const d=sub(f.b,f.a),l2=dot(d,d),t=l2?Math.max(0,Math.min(1,dot(sub(a.center,f.a),d)/l2)):0,q=add(f.a,mul(d,t)),v=sub(q,a.center),r=Math.hypot(v.x,v.y);
+    if(r&&onArc(Math.atan2(v.y,v.x),a))best=Math.min(best,Math.abs(r-a.radius));return best;
+  }
+  function fenceSelect(doc,raw,options={}){
+    const points=pathPoints(raw,2,'Fence'),tolerance=options.tolerance??0;if(!Number.isFinite(tolerance)||tolerance<0)throw Error('Fence tolerance must be finite and nonnegative');
+    const fence=points.slice(1).map((b,i)=>({a:points[i],b})).filter(s=>distance(s.a,s.b)>epsilon(s.a,s.b));if(!fence.length)throw Error('Fence needs distinct points');
+    return doc.entities.filter(e=>editable(doc,e)).filter(e=>{const g=geometry(e);return fence.some(f=>g.segments.some(s=>segmentCuts(s.a,s.b,f.a,f.b).length||tolerance>0&&Math.min(segmentDistance(s.a,f.a,f.b),segmentDistance(s.b,f.a,f.b),segmentDistance(f.a,s.a,s.b),segmentDistance(f.b,s.a,s.b))<=tolerance)||g.arcs.some(a=>arcCuts(a,f.a,f.b).length||tolerance>0&&arcFenceDistance(a,f)<=tolerance)||g.polygons.some(poly=>inPolygon(f.a,poly)||edges(poly).some(s=>segmentCuts(s.a,s.b,f.a,f.b).length))||g.fillLoops.some(loops=>insideLoops(f.a,loops)||insideLoops(f.b,loops)));}).map(e=>e.id);
+  }
+  function polygonSelect(doc,raw,crossing=false){
+    const poly=checkedPolygon(raw),pe=edges(poly),bounds=emptyBounds();for(const p of poly)include(bounds,p);
+    return doc.entities.filter(e=>editable(doc,e)).filter(e=>{const g=geometry(e),b=geometryBounds(g);if(!b.valid||b.max.x<bounds.min.x||b.min.x>bounds.max.x||b.max.y<bounds.min.y||b.min.y>bounds.max.y)return false;
+      if(!crossing)return g.segments.every(s=>segmentInside(s.a,s.b,poly,pe))&&g.arcs.every(a=>arcInside(a,poly,pe))&&g.polygons.every(p=>edges(p).every(s=>segmentInside(s.a,s.b,poly,pe)));
+      return g.segments.some(s=>inPolygon(s.a,poly)||inPolygon(s.b,poly)||pe.some(e=>segmentCuts(s.a,s.b,e.a,e.b).length))||g.arcs.some(a=>inPolygon(arcPoint(a,a.startAngle),poly)||inPolygon(arcPoint(a,a.endAngle),poly)||pe.some(e=>arcCuts(a,e.a,e.b).length))||g.polygons.some(p=>p.some(q=>inPolygon(q,poly))||poly.some(q=>inPolygon(q,p))||edges(p).some(s=>pe.some(e=>segmentCuts(s.a,s.b,e.a,e.b).length)))||g.fillLoops.some(loops=>poly.some(p=>insideLoops(p,loops)));
+    }).map(e=>e.id);
+  }
+  function filter(doc,options={}){
+    const allowed=['kind','kinds','layer','layers','color','colors','operator','invert','includeLocked'];for(const key of Object.keys(options))if(!allowed.includes(key))throw Error('Unsupported selection filter: '+key);
+    if(options.operator!==undefined&&!['all','any'].includes(options.operator))throw Error('Filter operator must be all or any');
+    for(const key of ['invert','includeLocked'])if(options[key]!==undefined&&typeof options[key]!=='boolean')throw Error(key+' must be boolean');
+    const criteria=[];for(const [one,many]of [['kind','kinds'],['layer','layers'],['color','colors']]){const values=options[many]??(options[one]===undefined?null:[options[one]]);if(values===null)continue;if(!Array.isArray(values)||!values.length||!values.every(v=>typeof v==='string'&&v.length))throw Error('Invalid '+many+' filter');const set=new Set(values.map(v=>one==='color'?v.toLowerCase():v));criteria.push(e=>{const layer=doc.layer(e.layer),value=one==='kind'?e.kind:one==='layer'?e.layer:(e.color||layer?.color||'').toLowerCase();return set.has(value)||one==='kind'&&e.kind==='compound'&&set.has(e.subtype);});}
+    return doc.entities.filter(e=>{const layer=doc.layer(e.layer);if(!layer||layer.visible===false||layer.locked&&!options.includeLocked)return false;const match=!criteria.length||(options.operator==='any'?criteria.some(f=>f(e)):criteria.every(f=>f(e)));return options.invert?!match:match;}).map(e=>e.id);
+  }
+  return Object.freeze({ pick, candidates, windowSelect, fenceSelect, polygonSelect, filter, distanceToEntity, entityBounds, textQuad, setTextMeasurer });
 });

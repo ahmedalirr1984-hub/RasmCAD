@@ -1,5 +1,28 @@
 # Changes
 
+## 0.9-dev — ten-workflow development cycle
+
+- Added Fence/polygon/previous selection and Quick Select; Extension/Parallel
+  snaps and more effective intersection-pair pruning with completeness notices.
+- Added native mixed line/arc PLINE paths, physical variable widths and PEDIT
+  segment edits. Curve centerlines remain analytic; width fills are tessellated.
+- Added Fence/Crossing groups to Trim/Extend with group-local Undo, and optional
+  compound-child styles in Match Properties.
+- Added explicit native line/circle dimension associations, persistent links,
+  retained label placement and visible orphan status.
+- Added named page setups, custom RGB plot weights, independent clipped plot
+  viewports and multi-sheet vector PDF publishing.
+- Built and embedded a genuine offline LibreDWG DWG2000 encoder. Save As checks
+  the AC1015 output and compares reimported supported geometry before download.
+  This experimental exchange flattens structures and approximates true colors
+  to ACI; modern DWG writing and lossless source-DWG round trips remain absent.
+- Added opt-in local recovery with three integrity-checked browser snapshots.
+- Compressed the embedded reader/writer binaries for the single-file build.
+- Fixed loading saved layout checkbox settings and constructing viewports for
+  drawings whose bounds have zero height or width.
+- See docs/TEN-WORKFLOWS.md and TEST_RESULTS.md for actual scope and validation.
+
+
 ## 0.8-dev — command depth preview
 
 - Deeper COPY,Reference ROTATE/SCALE,MIRROR,ARC3P,CIRCLETTR,RectangleDimensions,

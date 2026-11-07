@@ -1,3 +1,32 @@
+# Current verification —0.9-dev
+
+Eighteen focused Node suites passed on2026-11-07: core,core-v07,advanced,
+advanced-edit-v07,blocks-v07,hatch-v07,selection,snaps-v07,depth-core,
+depth-geometry,depth-dimensions,depth-save,depth-dwg,curve-polyline,
+print-layouts,ten-dimension-associations,ten-selection-snap,ten-dwg-recovery.
+Reproduce with `node tests/ten-focused.cjs`. New pure suites contain66groups
+(curves18,layouts7,associations13,selection/snaps21,DWG/recovery7).
+
+Eight headless Chromium workflows passed using actual pointer/keyboard input
+and downloaded files: selection,grouped fence TRIM+Undo,arc/width PLINE+explode
+and Undo,DIMASSOC move+Undo,page setups/layoutPDF/batchPDF,single-line layout
+and checkbox reload,genuineDWG download/reopen withArabic,and local recovery.
+The browser recorded no page errors and no external network requests.
+Reproduce with `node tests/ten-workflows-browser.test.cjs`.
+
+PDF validation uses Poppler pdfinfo,pdftotext,pdfimages: real multiple pages,
+physical paper/scale and vector geometry without raster drawing images.
+DWG validation uses the separately bundled reader,not Autodesk AutoCAD.
+The writer and reader share LibreDWG upstream; no independent-vendor fidelity
+claim follows. ModernDWG writing,lossless nativeDWG round trips,Windows/Edge,
+file-protocol recovery persistence,and physical printers remain unverified. A direct file://
+launch in managed Chromium was blocked before page load by
+ERR_BLOCKED_BY_ADMINISTRATOR; the browser policy was not changed.
+This cycle used focused checks for speed; it did not rerun every historical
+suite. Prior results below describe earlier builds.
+
+---
+
 # RasmCAD 0.7 — executed release validation
 
 Date: 2026-11-06. The exact tested HTML is 15,674,926 bytes, SHA256:

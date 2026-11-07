@@ -70,6 +70,8 @@ function color(doc,e,parent){return e.color||parent||(doc.layer?doc.layer(e.laye
 function drawingBounds(doc){const b={min:{x:0,y:0},max:{x:0,y:0},valid:false};for(const e of doc.entities){if(!visible(doc,e))continue;const v=C.entityBounds(e);if(!v.valid)continue;if(!b.valid){b.min={...v.min};b.max={...v.max};b.valid=true;}else{b.min.x=Math.min(b.min.x,v.min.x);b.min.y=Math.min(b.min.y,v.min.y);b.max.x=Math.max(b.max.x,v.max.x);b.max.y=Math.max(b.max.y,v.max.y);}}return b;}
 function windowFromBounds(b){if(!b?.valid||!b.min||!b.max)throw Error('The requested display bounds are unavailable.');return{xmin:b.min.x,ymin:b.min.y,xmax:b.max.x,ymax:b.max.y};}
 function selectedDocument(doc,ids){if(!Array.isArray(ids)||!ids.length)throw Error('Select visible objects before plotting a selection.');const selected=new Set(ids),entities=doc.entities.filter(e=>selected.has(e.id)&&visible(doc,e));if(!entities.length)throw Error('No selected visible objects are available to plot.');return {...doc,entities};}
+function normalizedPlotStyles(raw={}){if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Plot styles must be a color mapping object.');const result={};if(Object.keys(raw).length>256)throw Error('At most 256 color plot styles are supported.');for(const [key,value]of Object.entries(raw)){if(!/^#[0-9a-f]{6}$/i.test(key)||!value||typeof value!=='object'||Array.isArray(value))throw Error('Plot styles use #RRGGBB keys and settings objects.');for(const field of Object.keys(value))if(!['color','lineWidthMm'].includes(field))throw Error('Unsupported color plot style field: '+field);const item={};if(value.color!=null){if(!/^#[0-9a-f]{6}$/i.test(value.color))throw Error('Invalid plot style color.');item.color=value.color.toLowerCase();}if(value.lineWidthMm!=null){item.lineWidthMm=positive(value.lineWidthMm,'Plot style line weight');if(item.lineWidthMm>5)throw Error('Plot style weight must not exceed 5 mm.');}result[key.toLowerCase()]=item;}return result;}
+function plotInk(plan,ink,e){const value=plan.plotStyles[ink.toLowerCase()]||{};return{color:plan.monochrome?'#000000':value.color||ink,weight:value.lineWidthMm??plan.lineWidthMm*(plan.useLineweights?(e.lineWidth||1):1)};}
 function planPlot(doc,options={}){
  if(!doc||!Array.isArray(doc.entities)||!Array.isArray(doc.layers))throw Error('A drawing is required.');
  const paper=options.paper||'A4',preset=PAPERS[paper];if(!preset&&paper!=='Custom')throw Error('Unknown paper size.');
@@ -94,10 +96,11 @@ function planPlot(doc,options={}){
  const toPage=p=>({x:originMm.x*MM+(p.x-bounds.min.x)*factor,y:originMm.y*MM+(p.y-bounds.min.y)*factor});
  const lineWidthMm=positive(options.lineWidthMm??.25,'Line weight');if(lineWidthMm>5)throw Error('Base line weight must not exceed 5 mm.');
  let maxWeight=1;const stack=[...(area==='selection'||area==='selectedBounds'?selectedDocument(doc,options.selectedIds):doc).entities];while(stack.length){const e=stack.pop();maxWeight=Math.max(maxWeight,Number(e.lineWidth)||1);if(e.kind==='compound')stack.push(...e.parts||[]);}const clipPaddingMm=lineWidthMm*(options.useLineweights===false?1:maxWeight)/2;
+ const plotStyles=normalizedPlotStyles(options.plotStyles),stylePadding=Math.max(0,...Object.values(plotStyles).map(v=>(v.lineWidthMm||0)/2));
  const clipped=plottedWidthMm>drawableWidthMm+1e-7||plottedHeightMm>drawableHeightMm+1e-7;
  const warnings=[];if(clipped)warnings.push('Drawing exceeds the printable area at this scale and will be clipped.');
  warnings.push('Embedded DejaVu text substitutes source CAD fonts; complex shaping and unsupported glyphs may differ.');
- return {paper,orientation,widthMm,heightMm,marginMm,drawableWidthMm,drawableHeightMm,units,unitMm,area,bounds,fit,scale,fitScale,plottedWidthMm,plottedHeightMm,centered,originMm,factor,lineWidthMm,monochrome:options.monochrome!==false,useLineweights:options.useLineweights!==false,clipPaddingMm,clipped,warnings,toPage};
+ return {paper,orientation,widthMm,heightMm,marginMm,drawableWidthMm,drawableHeightMm,units,unitMm,area,bounds,fit,scale,fitScale,plottedWidthMm,plottedHeightMm,centered,originMm,factor,lineWidthMm,plotStyles,monochrome:options.monochrome!==false,useLineweights:options.useLineweights!==false,clipPaddingMm:Math.max(clipPaddingMm,stylePadding),clipped,warnings,toPage};
 }
 function windowClip(plan){const pad=plan.clipPaddingMm||plan.lineWidthMm/2;return{x:plan.originMm.x-(plan.plottedWidthMm===0?pad:0),y:plan.originMm.y-(plan.plottedHeightMm===0?pad:0),width:plan.plottedWidthMm===0?2*pad:plan.plottedWidthMm,height:plan.plottedHeightMm===0?2*pad:plan.plottedHeightMm};}
 function rgb(hex){return[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);}
@@ -108,12 +111,13 @@ function utf16Hex(code){if(code<=65535)return code.toString(16).padStart(4,'0').
 function serializePdf(doc,options={}){
  const plan=planPlot(doc,options),commands=[],used=new Map(),warnings=plan.warnings.slice();let primitiveCount=0;
  const point=p=>plan.toPage(p),xy=p=>{const q=point(p);return n(q.x)+' '+n(q.y);};
- function style(e,ink){const c=plan.monochrome?[0,0,0]:rgb(ink);commands.push(c.map(n).join(' ')+' RG',c.map(n).join(' ')+' rg',n(plan.lineWidthMm*MM*(plan.useLineweights?(e.lineWidth||1):1))+' w','1 J','1 j');}
+ function style(e,ink){const mapped=plotInk(plan,ink,e),c=rgb(mapped.color);commands.push(c.map(n).join(' ')+' RG',c.map(n).join(' ')+' rg',n(mapped.weight*MM)+' w','1 J','1 j');}
  function path(points,close=false,fill=false){if(!points?.length)return;commands.push(xy(points[0])+' m');for(let i=1;i<points.length;i++)commands.push(xy(points[i])+' l');if(close)commands.push('h');commands.push(fill?'f':'S');primitiveCount++;}
  function arc(center,radius,start,span){const pieces=Math.max(1,Math.ceil(span/(Math.PI/2))),step=span/pieces;for(let i=0;i<pieces;i++){const a=start+i*step,b=a+step,k=4/3*Math.tan(step/4);const pa={x:center.x+radius*Math.cos(a),y:center.y+radius*Math.sin(a)},pb={x:center.x+radius*Math.cos(b),y:center.y+radius*Math.sin(b)},ca={x:pa.x-k*radius*Math.sin(a),y:pa.y+k*radius*Math.cos(a)},cb={x:pb.x+k*radius*Math.sin(b),y:pb.y-k*radius*Math.cos(b)};if(!i)commands.push(xy(pa)+' m');commands.push(xy(ca)+' '+xy(cb)+' '+xy(pb)+' c');}commands.push('S');primitiveCount++;}
  function label(p,value,height,angle=0){if(!value)return;const visual=String(value).replace(/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]+/g,run=>Array.from(run).reverse().join(''));const chars=Array.from(visual),codes=[];for(const character of chars){const code=character.codePointAt(0),gid=FONT.cmap[code]||0;if(!gid&&!warnings.includes('Some text glyphs are unavailable in the embedded font and use a missing-glyph symbol.'))warnings.push('Some text glyphs are unavailable in the embedded font and use a missing-glyph symbol.');used.set(gid,used.get(gid)||code);codes.push(gid.toString(16).padStart(4,'0'));}const q=point(p),co=Math.cos(angle),si=Math.sin(angle);commands.push('BT','/F1 '+n(height*plan.factor)+' Tf',n(co)+' '+n(si)+' '+n(-si)+' '+n(co)+' '+n(q.x)+' '+n(q.y)+' Tm','<'+codes.join('')+'> Tj','ET');primitiveCount++;}
  function emit(e,parentInk,depth=0){if(depth>8)throw Error('Plot compound nesting is too deep.');if(!visible(doc,e))return;const ink=color(doc,e,parentInk);style(e,ink);
   if(e.kind==='compound'){
+   if(e.subtype==='plotViewport'&&e.data?.clip){const r=e.data.clip,q=point({x:r.x,y:r.y});commands.push('q',n(q.x)+' '+n(q.y)+' '+n(r.width*plan.factor)+' '+n(r.height*plan.factor)+' re W n');for(const part of e.parts||[])emit(part,ink,depth+1);commands.push('Q');return;}
    if(e.subtype==='hatch'&&String(e.data?.pattern).toUpperCase()==='SOLID'&&e.data?.loops?.length){for(const loop of e.data.loops){if(!loop.length)continue;commands.push(xy(loop[0])+' m');for(let i=1;i<loop.length;i++)commands.push(xy(loop[i])+' l');commands.push('h');}commands.push('f*');primitiveCount++;}
    else for(const part of e.parts||[])emit(part,ink,depth+1);
   }else if(e.kind==='line'||e.kind==='polyline')path(e.points,e.closed);
@@ -148,16 +152,17 @@ function serializePdf(doc,options={}){
 /* Vector SVG uses the same physical plot plan as PDF. Browser print font shaping
  * may differ from the embedded PDF font; no images or external fonts are used. */
 function serializeSvg(doc,options={}){
- const plan=planPlot(doc,options),out=[],warnings=plan.warnings.slice(),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));let primitiveCount=0;
+ const plan=planPlot(doc,options),out=[],warnings=plan.warnings.slice(),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));let primitiveCount=0,viewportIndex=0;
  const point=p=>{const q=plan.toPage(p);return{x:q.x/MM,y:plan.heightMm-q.y/MM};},xy=p=>{const q=point(p);return n(q.x)+' '+n(q.y);};
  function path(points,close,fill,style){if(!points?.length)return;out.push('<path d="M '+points.map(xy).join(' L ')+(close?' Z':'')+'" '+(fill?style.replace(/stroke="[^"]*"/,'stroke="none"'):style)+(fill?' fill="currentColor"':' fill="none"')+'/>');primitiveCount++;}
- function emit(e,parentInk,depth=0){if(depth>8)throw Error('Plot compound nesting is too deep.');if(!visible(doc,e))return;const ink=plan.monochrome?'#000000':color(doc,e,parentInk),style='stroke="'+esc(ink)+'" color="'+esc(ink)+'" stroke-width="'+n(plan.lineWidthMm*(plan.useLineweights?(e.lineWidth||1):1))+'" stroke-linecap="round" stroke-linejoin="round"';
-  if(e.kind==='compound'){if(e.subtype==='hatch'&&String(e.data?.pattern).toUpperCase()==='SOLID'&&e.data?.loops?.length){const d=e.data.loops.filter(l=>l.length).map(l=>'M '+l.map(xy).join(' L ')+' Z').join(' ');out.push('<path d="'+d+'" fill="'+esc(ink)+'" fill-rule="evenodd" stroke="none"/>');primitiveCount++;}else for(const part of e.parts||[])emit(part,ink,depth+1);}
+ function emit(e,parentInk,depth=0){if(depth>8)throw Error('Plot compound nesting is too deep.');if(!visible(doc,e))return;const sourceInk=color(doc,e,parentInk),mapped=plotInk(plan,sourceInk,e),ink=mapped.color,style='stroke="'+esc(ink)+'" color="'+esc(ink)+'" stroke-width="'+n(mapped.weight)+'" stroke-linecap="round" stroke-linejoin="round"';
+  if(e.kind==='compound'&&e.subtype==='plotViewport'&&e.data?.clip){const r=e.data.clip,q=point({x:r.x,y:r.y+r.height}),id='rasmcad-layout-viewport-'+(++viewportIndex);out.push('<defs><clipPath id="'+id+'"><rect x="'+n(q.x)+'" y="'+n(q.y)+'" width="'+n(r.width*plan.factor/MM)+'" height="'+n(r.height*plan.factor/MM)+'"/></clipPath></defs><g clip-path="url(#'+id+')">');for(const part of e.parts||[])emit(part,sourceInk,depth+1);out.push('</g>');return;}
+  if(e.kind==='compound'){if(e.subtype==='hatch'&&String(e.data?.pattern).toUpperCase()==='SOLID'&&e.data?.loops?.length){const d=e.data.loops.filter(l=>l.length).map(l=>'M '+l.map(xy).join(' L ')+' Z').join(' ');out.push('<path d="'+d+'" fill="'+esc(ink)+'" fill-rule="evenodd" stroke="none"/>');primitiveCount++;}else for(const part of e.parts||[])emit(part,sourceInk,depth+1);}
   else if(e.kind==='line'||e.kind==='polyline')path(e.points,e.closed,false,style);
   else if(e.kind==='solid')path(e.points,true,true,style);
   else if(e.kind==='circle'||e.kind==='arc'){const c=point(e.points[0]),r=e.radius*plan.factor/MM,span=e.kind==='circle'?TAU:C.arcSpan(e.startAngle,e.endAngle);if(span>=TAU-1e-12)out.push('<circle cx="'+n(c.x)+'" cy="'+n(c.y)+'" r="'+n(r)+'" '+style+' fill="none"/>');else{const a=e.startAngle,b=a+span,p={x:e.points[0].x+e.radius*Math.cos(a),y:e.points[0].y+e.radius*Math.sin(a)},q={x:e.points[0].x+e.radius*Math.cos(b),y:e.points[0].y+e.radius*Math.sin(b)};out.push('<path d="M '+xy(p)+' A '+n(r)+' '+n(r)+' 0 '+(span>Math.PI?1:0)+' 0 '+xy(q)+'" '+style+' fill="none"/>');}primitiveCount++;}
   else if(e.kind==='text'){const q=point(e.points[0]);out.push('<text x="'+n(q.x)+'" y="'+n(q.y)+'" font-family="DejaVu Sans, Arial, sans-serif" font-size="'+n(e.textHeight*plan.factor/MM)+'" fill="'+esc(ink)+'" transform="rotate('+n(-(e.startAngle||0)*180/Math.PI)+' '+n(q.x)+' '+n(q.y)+')">'+esc(e.text)+'</text>');primitiveCount++;}
-  else if(e.kind==='dimension'){const g=C.annotationGeometry(e);for(const s of g.segments)emit({kind:'line',points:[s.a,s.b],layer:e.layer,color:s.color||ink,lineWidth:e.lineWidth},ink,depth+1);for(const a of g.arcs)emit({kind:'arc',points:[a.center],radius:a.radius,startAngle:a.startAngle,endAngle:a.endAngle,layer:e.layer,color:a.color||ink,lineWidth:e.lineWidth},ink,depth+1);for(const f of g.fills||[])emit({kind:'solid',points:f.points,layer:e.layer,color:f.color||ink,lineWidth:e.lineWidth},ink,depth+1);for(const l of g.labels)emit({kind:'text',points:[l.point],text:l.text,textHeight:l.height,startAngle:l.angle||0,layer:e.layer,color:l.color||ink},ink,depth+1);}
+  else if(e.kind==='dimension'){const g=C.annotationGeometry(e);for(const s of g.segments)emit({kind:'line',points:[s.a,s.b],layer:e.layer,color:s.color||sourceInk,lineWidth:e.lineWidth},ink,depth+1);for(const a of g.arcs)emit({kind:'arc',points:[a.center],radius:a.radius,startAngle:a.startAngle,endAngle:a.endAngle,layer:e.layer,color:a.color||sourceInk,lineWidth:e.lineWidth},ink,depth+1);for(const f of g.fills||[])emit({kind:'solid',points:f.points,layer:e.layer,color:f.color||sourceInk,lineWidth:e.lineWidth},ink,depth+1);for(const l of g.labels)emit({kind:'text',points:[l.point],text:l.text,textHeight:l.height,startAngle:l.angle||0,layer:e.layer,color:l.color||sourceInk},ink,depth+1);}
   else throw Error('Plot does not support entity kind '+e.kind+'.');
  }
  const rect=windowClip(plan),clipWindow=['window','display','selectedBounds'].includes(plan.area),clip=clipWindow?'<clipPath id="rasmcad-plot-window-clip"><rect x="'+n(rect.x)+'" y="'+n(plan.heightMm-rect.y-rect.height)+'" width="'+n(rect.width)+'" height="'+n(rect.height)+'"/></clipPath>':'';
@@ -166,5 +171,67 @@ function serializeSvg(doc,options={}){
  warnings.push('Browser printer text uses local font substitution; printer paper, margins and 100% scale must match this plan.');
  return{svg:out.join(''),plotPlan:plan,warnings,primitiveCount};
 }
-return Object.freeze({PAPERS,UNITS,planPlot,serializePdf,serializeSvg,drawingBounds});
+/* Layouts are paper specifications, not editable model-space entities. Every
+ * viewport keeps its own analytic world->paper transform and vector clip. */
+function layoutDocument(doc,layout){
+ if(!layout||typeof layout!=='object'||!Array.isArray(layout.viewports)||!layout.viewports.length||layout.viewports.length>16)throw Error('A paper layout needs 1..16 viewports.');
+ const page=planPlot(doc,{...layout,area:'window',window:{xmin:0,ymin:0,xmax:1,ymax:1},units:'mm',scale:1,fit:false,center:false,marginMm:0}),paper=new C.Document(),paperLayer='RasmCAD-PAPER';
+ paper.layers=[{name:paperLayer,color:'#000000',visible:true,locked:false}];paper.currentLayer=paperLayer;const plans=[];
+ for(const [index,v]of layout.viewports.entries()){
+  const x=finite(v.xMm,'Viewport left'),y=finite(v.yMm,'Viewport bottom'),width=positive(v.widthMm,'Viewport width'),height=positive(v.heightMm,'Viewport height');
+  if(x<0||y<0||x+width>page.widthMm+1e-8||y+height>page.heightMm+1e-8)throw Error('Viewport '+(index+1)+' lies outside the paper.');
+  const plan=planPlot(doc,{...layout,...v,paper:'Custom',orientation:width>=height?'landscape':'portrait',widthMm:width,heightMm:height,marginMm:0,area:'window',window:v.window,scale:v.scale??layout.scale??100,units:v.units||layout.units||'mm'}),factor=plan.unitMm/plan.scale;
+  const map=p=>({x:x+plan.originMm.x+(p.x-plan.bounds.min.x)*factor,y:y+plan.originMm.y+(p.y-plan.bounds.min.y)*factor});
+  function convert(e,parentInk,depth=0){if(depth>8)throw Error('Layout nesting is too deep.');if(!visible(doc,e))return[];const ink=color(doc,e,parentInk),common={layer:paperLayer,color:ink,lineWidth:e.lineWidth||1};
+   if(e.kind==='dimension'){const g=C.annotationGeometry(e),parts=[];for(const s of g.segments)parts.push({kind:'line',points:[s.a,s.b],color:s.color||ink});for(const a of g.arcs)parts.push({kind:'arc',points:[a.center],radius:a.radius,startAngle:a.startAngle,endAngle:a.endAngle,color:a.color||ink});for(const f of g.fills||[])parts.push({kind:'solid',points:f.points,color:f.color||ink});for(const l of g.labels)parts.push({kind:'text',points:[l.point],text:l.text,textHeight:l.height,startAngle:l.angle||0,color:l.color||ink});return parts.flatMap(p=>convert({...p,layer:e.layer,lineWidth:e.lineWidth},ink,depth+1));}
+   if(e.kind==='compound'){if(e.subtype==='hatch'&&String(e.data?.pattern).toUpperCase()==='SOLID'&&e.data?.loops?.length)return[{...common,kind:'compound',subtype:'hatch',points:e.points.map(map),parts:[],data:{pattern:'SOLID',loops:e.data.loops.map(loop=>loop.map(map))}}];return(e.parts||[]).flatMap(p=>convert(p,ink,depth+1));}
+   if(!['line','polyline','solid','circle','arc','text'].includes(e.kind))throw Error('Layout cannot plot entity kind '+e.kind);const out={...e,...common,id:undefined,points:e.points.map(map)};if(e.radius)out.radius=e.radius*factor;if(e.textHeight)out.textHeight=e.textHeight*factor;return[out];
+  }
+  const source=v.selectedIds?selectedDocument(doc,v.selectedIds):doc,parts=source.entities.flatMap(e=>convert(e));paper.add({kind:'compound',subtype:'plotViewport',points:[{x,y},{x:x+width,y:y+height}],parts,data:{clip:{x,y,width,height}}});
+  if(v.frame!==false)paper.add({kind:'polyline',points:[{x,y},{x:x+width,y},{x:x+width,y:y+height},{x,y:y+height}],closed:true,color:'#000000',lineWidth:1});plans.push({index:index+1,xMm:x,yMm:y,widthMm:width,heightMm:height,scale:plan.scale,units:plan.units,window:{...v.window},clipped:plan.clipped});
+ }
+ return{document:paper,options:{...layout,paper:'Custom',widthMm:page.widthMm,heightMm:page.heightMm,orientation:page.orientation,area:'window',window:{xmin:0,ymin:0,xmax:page.widthMm,ymax:page.heightMm},units:'mm',scale:1,fit:false,center:false,marginMm:0},viewports:plans};
+}
+function serializeLayoutPdf(doc,layout){const built=layoutDocument(doc,layout),pdf=serializePdf(built.document,built.options);Object.defineProperty(pdf,'layoutViewports',{value:built.viewports});return pdf;}
+function serializeLayoutSvg(doc,layout){const built=layoutDocument(doc,layout),result=serializeSvg(built.document,built.options);result.layoutViewports=built.viewports;return result;}
+/* Merge only PDFs generated above. Cross-reference offsets, not regex matching
+ * binary font data, delimit each object. Stream bytes are never rewritten. */
+function serializePdfBatch(doc,sheets){
+ if(!Array.isArray(sheets)||!sheets.length||sheets.length>32)throw Error('Publish needs 1..32 sheets.');
+ const objects=[null],pageIds=[],plans=[],warnings=[];let primitiveCount=0;
+ for(const [sheetIndex,sheet]of sheets.entries()){
+  const pdf=sheet.viewports?serializeLayoutPdf(doc,sheet):serializePdf(doc,sheet),text=Array.from(pdf,b=>String.fromCharCode(b)).join(''),start=Number(text.match(/startxref\s+(\d+)\s+%%EOF\s*$/)?.[1]),xref=text.slice(start).split('\n');
+  if(xref[0]!=='xref'||!/^0 \d+$/.test(xref[1]))throw Error('Internal generated PDF xref is invalid.');const count=Number(xref[1].split(' ')[1]),offset=objects.length-1,offsets=xref.slice(3,3+count-1).map(line=>Number(line.slice(0,10)));
+  for(let id=1;id<count;id++){
+   const from=offsets[id-1],to=id<count-1?offsets[id]:start,chunk=text.slice(from,to),header=id+' 0 obj\n';if(!chunk.startsWith(header)||!chunk.endsWith('\nendobj\n'))throw Error('Internal generated PDF object is invalid.');let body=chunk.slice(header.length,-8),streamAt=body.indexOf('\nstream\n');
+   const remap=value=>value.replace(/\b(\d+) 0 R\b/g,(_,v)=>(Number(v)+offset)+' 0 R');
+   if(streamAt>=0){const length=Number(body.slice(0,streamAt).match(/\/Length (\d+)/)?.[1]);if(!Number.isFinite(length))throw Error('Internal stream length is invalid.');const dataAt=streamAt+8;body=remap(body.slice(0,dataAt))+body.slice(dataAt,dataAt+length)+remap(body.slice(dataAt+length));}else body=remap(body);
+   if(/\/Type \/Page\b/.test(body.slice(0,streamAt>=0?streamAt:body.length)))pageIds.push(id+offset);objects.push(Uint8Array.from(body,c=>c.charCodeAt(0)));
+  }
+  plans.push({sheet:sheetIndex+1,plotPlan:pdf.plotPlan,viewports:pdf.layoutViewports||null});warnings.push(...pdf.warnings.map(w=>'Sheet '+(sheetIndex+1)+': '+w));primitiveCount+=pdf.primitiveCount;
+ }
+ const pages=objects.length;objects.push(bytes('<< /Type /Pages /Kids ['+pageIds.map(id=>id+' 0 R').join(' ')+'] /Count '+pageIds.length+' >>'));
+ for(const id of pageIds){const body=Array.from(objects[id],b=>String.fromCharCode(b)).join('').replace(/\/Parent \d+ 0 R/,'/Parent '+pages+' 0 R');objects[id]=bytes(body);}
+ const catalog=objects.length;objects.push(bytes('<< /Type /Catalog /Pages '+pages+' 0 R >>'));const chunks=[bytes('%PDF-1.7\n%RasmCAD-vector-batch\n')],offsets=[0];let at=chunks[0].length;
+ for(let i=1;i<objects.length;i++){offsets.push(at);const chunk=join([bytes(i+' 0 obj\n'),objects[i],bytes('\nendobj\n')]);chunks.push(chunk);at+=chunk.length;}
+ chunks.push(bytes('xref\n0 '+objects.length+'\n0000000000 65535 f \n'+offsets.slice(1).map(v=>String(v).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+objects.length+' /Root '+catalog+' 0 R >>\nstartxref\n'+at+'\n%%EOF\n'));
+ const result=join(chunks);if(result.length>64*1024*1024)throw Error('Published PDF exceeds 64 MiB.');Object.defineProperties(result,{sheetPlans:{value:plans},warnings:{value:warnings},primitiveCount:{value:primitiveCount}});return result;
+}
+function pageSetup(doc,action,name,settings){
+ const key=String(name||'').trim();action=String(action).toUpperCase();const source=doc.resources?.plotPresets||{};
+ if(action==='LIST')return Object.keys(source);if(!key||key.length>80||/[\x00-\x1f]/.test(key)||['__proto__','constructor','prototype'].includes(key))throw Error('Page setup name must be 1..80 ordinary characters.');
+ if(action==='GET'){if(!Object.prototype.hasOwnProperty.call(source,key))throw Error('Page setup not found.');return JSON.parse(JSON.stringify(source[key]));}
+ const resources=JSON.parse(JSON.stringify(doc.resources||{})),presets=resources.plotPresets||(resources.plotPresets={});
+ if(action==='DELETE'){if(!Object.prototype.hasOwnProperty.call(presets,key))throw Error('Page setup not found.');delete presets[key];}
+ else if(action==='SAVE'){if(!settings||typeof settings!=='object')throw Error('Page setup settings are required.');if(!Object.prototype.hasOwnProperty.call(presets,key)&&Object.keys(presets).length>=32)throw Error('At most 32 named page setups.');const copy=JSON.parse(JSON.stringify(settings));if(JSON.stringify(copy).length>65536)throw Error('Page setup is too large.');const sample=new C.Document();sample.add({kind:'line',points:[{x:0,y:0},{x:100,y:100}]});planPlot(sample,{...copy,area:copy.area==='window'?'window':'extents'});presets[key]=copy;}
+ else throw Error('Page setup action must be SAVE, GET, LIST or DELETE.');
+ const working=C.Document.parse(doc.serialize());working.resources=resources;working.serialize();if(JSON.stringify(resources)!==JSON.stringify(doc.resources)){doc.checkpoint();doc.resources=resources;}return action==='DELETE'?null:JSON.parse(JSON.stringify(presets[key]));
+}
+function layoutSetup(doc,action,name,settings){
+ if(String(action).toUpperCase()==='SAVE')layoutDocument(doc,settings);
+ const working=C.Document.parse(doc.serialize());working.resources.plotPresets=JSON.parse(JSON.stringify(doc.resources?.plotLayouts||{}));const result=pageSetup(working,action,name,settings);
+ if(!['GET','LIST'].includes(String(action).toUpperCase())){const next=working.resources.plotPresets;if(JSON.stringify(next)!==JSON.stringify(doc.resources?.plotLayouts||{})){doc.checkpoint();doc.resources.plotLayouts=next;}}
+ return result;
+}
+return Object.freeze({PAPERS,UNITS,planPlot,serializePdf,serializeSvg,drawingBounds,normalizedPlotStyles,layoutDocument,serializeLayoutPdf,serializeLayoutSvg,serializePdfBatch,pageSetup,layoutSetup});
 });

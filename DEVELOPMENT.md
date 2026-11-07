@@ -1,7 +1,20 @@
-# Develop RasmCAD Advanced 0.7
+# Current development build
+
+Branch `codex/ten-workflows`, version0.9-dev. Restore the HTML and both WASM
+engines with `node restore-release.cjs` and `node restore-vendor.cjs`, then
+run `node build.cjs`. New modules: curve-polyline, selection-tools, recovery,
+dwg-encoder and plot-advanced-ui. For the writer source build see
+[BUILD.md](vendor/dwg-writer/BUILD.md). Native format remains1.
+
+Focused checks: curve-polyline, ten-selection-snap, ten-dimension-associations,
+print-layouts, ten-dwg-recovery and ten-workflows-browser test files. Browser
+checks require Playwright, local Chromium and localhost. PDF validation uses
+Poppler. No development dependency is needed to run the distributed HTML.
+
+# Develop RasmCAD Advanced 0.9-dev
 
 The GitHub checkout stores the standalone HTML in `dist/parts` because the
-GitHub connector cannot send the 15 MB file in one request. Run
+GitHub connector cannot send the standalone file in one request. Run
 `node restore-release.cjs` and `node restore-vendor.cjs` before rebuilding.
 Both the complete corresponding upstream source archive and the original font
 source are included in the 0.7 Google Drive delivery linked from README.md.
